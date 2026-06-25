@@ -1,15 +1,18 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sistema_dental/core/theme/app_colors.dart';
 import 'package:go_router/go_router.dart';
+import 'package:sistema_dental/features/auth/providers/auth_providers.dart';
+import 'package:sistema_dental/features/patient/data/notification_repository.dart';
 
-class PatientDashboard extends StatefulWidget {
+class PatientDashboard extends ConsumerStatefulWidget {
   const PatientDashboard({super.key});
 
   @override
-  State<PatientDashboard> createState() => _PatientDashboardState();
+  ConsumerState<PatientDashboard> createState() => _PatientDashboardState();
 }
 
-class _PatientDashboardState extends State<PatientDashboard> {
+class _PatientDashboardState extends ConsumerState<PatientDashboard> {
   int _selectedIndex = 0;
 
   @override
@@ -68,6 +71,9 @@ class _PatientDashboardState extends State<PatientDashboard> {
   }
 
   Widget _buildBody() {
+    final userAsync = ref.watch(currentUserProvider);
+    final userName = userAsync.value?.name ?? 'Paciente';
+
     if (_selectedIndex == 1) {
       return const PatientScheduleView();
     } else if (_selectedIndex == 3) {
@@ -80,9 +86,9 @@ class _PatientDashboardState extends State<PatientDashboard> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Hola, Ana!',
-            style: TextStyle(
+          Text(
+            '¡Hola, $userName!',
+            style: const TextStyle(
               fontSize: 32,
               fontWeight: FontWeight.bold,
               color: AppColors.primaryBlue,
@@ -498,11 +504,138 @@ class PatientScheduleView extends StatelessWidget {
 }
 
 // Vista de Perfil (Cuarta pestaña)
-class PatientProfileView extends StatelessWidget {
+class PatientProfileView extends ConsumerWidget {
   const PatientProfileView({super.key});
 
+  void _showLinkWatchDialog(BuildContext context, WidgetRef ref) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Vincular Smartwatch'),
+          content: const Text(
+            'Elige la plataforma de tu reloj inteligente para conectarlo con DentalSync y recibir notificaciones en tiempo real.',
+          ),
+          actions: [
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                TextButton.icon(
+                  icon: const Icon(Icons.watch, color: AppColors.primaryBlue),
+                  label: const Text('Apple Watch (watchOS)'),
+                  onPressed: () async {
+                    final repo = ref.read(notificationRepositoryProvider);
+                    await repo.registerDevice(
+                      deviceType: 'watch_os',
+                      pushToken: 'mock_apple_watch_token_${ref.read(authRepositoryProvider).currentAuthUser?.id ?? ""}',
+                    );
+                    ref.invalidate(linkedDevicesProvider);
+                    if (context.mounted) {
+                      Navigator.of(context).pop();
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('¡Apple Watch vinculado correctamente!'),
+                          backgroundColor: AppColors.success,
+                        ),
+                      );
+                    }
+                  },
+                ),
+                const SizedBox(height: 8),
+                TextButton.icon(
+                  icon: const Icon(Icons.watch_rounded, color: AppColors.secondaryBlue),
+                  label: const Text('Wear OS (Android)'),
+                  onPressed: () async {
+                    final repo = ref.read(notificationRepositoryProvider);
+                    await repo.registerDevice(
+                      deviceType: 'wear_os',
+                      pushToken: 'mock_wear_os_token_${ref.read(authRepositoryProvider).currentAuthUser?.id ?? ""}',
+                    );
+                    ref.invalidate(linkedDevicesProvider);
+                    if (context.mounted) {
+                      Navigator.of(context).pop();
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('¡Smartwatch Wear OS vinculado correctamente!'),
+                          backgroundColor: AppColors.success,
+                        ),
+                      );
+                    }
+                  },
+                ),
+                const SizedBox(height: 8),
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Cancelar', style: TextStyle(color: Colors.grey)),
+                ),
+              ],
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _showUnlinkWatchDialog(BuildContext context, WidgetRef ref, List<Map<String, dynamic>> devices) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Desvincular Smartwatch'),
+          content: const Text('¿Estás seguro de que deseas desvincular tus relojes inteligentes de DentalSync? Dejarás de recibir notificaciones de tu turno.'),
+          actions: [
+            TextButton(
+              onPressed: () async {
+                final repo = ref.read(notificationRepositoryProvider);
+                for (final d in devices) {
+                  await repo.deactivateDevice(d['device_type'] as String);
+                }
+                ref.invalidate(linkedDevicesProvider);
+                if (context.mounted) {
+                  Navigator.of(context).pop();
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Dispositivos desvinculados.'),
+                    ),
+                  );
+                }
+              },
+              child: const Text('Sí, Desvincular', style: TextStyle(color: AppColors.error)),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancelar', style: TextStyle(color: Colors.grey)),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final userAsync = ref.watch(currentUserProvider);
+    final devicesAsync = ref.watch(linkedDevicesProvider);
+
+    final user = userAsync.value;
+    final userName = user?.name ?? 'Paciente';
+    final userEmail = user?.email ?? 'correo@email.com';
+    final userId = user?.id != null ? (user!.id.length > 8 ? user.id.substring(0, 8) : user.id) : 'DS-2026-PEND';
+
+    final linkedDevices = devicesAsync.value ?? [];
+    final isWatchLinked = linkedDevices.any((d) => d['device_type'] == 'watch_os' || d['device_type'] == 'wear_os');
+    
+    // Descripción del smartwatch conectado
+    String watchSubtitle = 'Sincronización con dispositivos';
+    if (isWatchLinked) {
+      final types = linkedDevices.map((d) {
+        final dt = d['device_type'] as String;
+        return dt == 'watch_os' ? 'Apple Watch' : 'Wear OS';
+      }).join(', ');
+      watchSubtitle = 'Conectado: $types';
+    }
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20.0),
       child: Column(
@@ -528,11 +661,11 @@ class PatientProfileView extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 16),
-          const Text('Ana Martínez', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+          Text(userName, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
           const SizedBox(height: 4),
-          const Text('Paciente ID: DS-2024-9912', style: TextStyle(color: AppColors.textSecondary)),
+          Text('Paciente ID: $userId', style: const TextStyle(color: AppColors.textSecondary)),
           const SizedBox(height: 4),
-          const Text('anamartinez@email.com', style: TextStyle(color: AppColors.primaryBlue)),
+          Text(userEmail, style: const TextStyle(color: AppColors.primaryBlue)),
           
           const SizedBox(height: 32),
           
@@ -561,11 +694,17 @@ class PatientProfileView extends StatelessWidget {
           _buildSettingsTile(
             icon: Icons.watch_outlined,
             title: 'Alertas de Smartwatch',
-            subtitle: 'Sincronización con dispositivos',
+            subtitle: watchSubtitle,
             trailing: Switch(
-              value: false,
+              value: isWatchLinked,
               activeColor: AppColors.primaryBlue,
-              onChanged: (val) {},
+              onChanged: (val) {
+                if (val) {
+                  _showLinkWatchDialog(context, ref);
+                } else {
+                  _showUnlinkWatchDialog(context, ref, linkedDevices);
+                }
+              },
             ),
           ),
           
@@ -591,7 +730,10 @@ class PatientProfileView extends StatelessWidget {
           SizedBox(
             width: double.infinity,
             child: ElevatedButton.icon(
-              onPressed: () => context.go('/login'),
+              onPressed: () async {
+                await ref.read(authRepositoryProvider).signOut();
+                if (context.mounted) context.go('/login');
+              },
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.error.withOpacity(0.1),
                 foregroundColor: AppColors.error,
