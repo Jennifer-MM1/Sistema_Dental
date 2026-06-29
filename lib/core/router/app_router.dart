@@ -4,10 +4,11 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:sistema_dental/core/models/user_role.dart';
 import 'package:sistema_dental/features/auth/presentation/login_screen.dart';
-import 'package:sistema_dental/features/patient/presentation/patient_dashboard.dart';
+import 'package:sistema_dental/features/client/presentation/client_dashboard.dart';
 import 'package:sistema_dental/features/dentist/presentation/dentist_dashboard.dart';
 import 'package:sistema_dental/features/secretary/presentation/secretary_dashboard.dart';
 import 'package:sistema_dental/features/super_admin/presentation/super_admin_dashboard.dart';
+import 'package:sistema_dental/features/auth/presentation/link_clinic_screen.dart';
 
 /// Proveedor del router con protección de rutas basada en roles.
 /// Usa Riverpod para acceder al estado de autenticación.
@@ -33,7 +34,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               .eq('id', user.id)
               .single();
 
-          final role = UserRole.fromString(profile['role'] as String? ?? 'patient');
+          final role = UserRole.fromString(profile['role'] as String? ?? 'client');
           return role.initialRoute;
         } catch (e) {
           // Si hay error obteniendo el perfil, quedarse en login
@@ -49,7 +50,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             .eq('id', user.id)
             .single();
 
-        final role = UserRole.fromString(profile['role'] as String? ?? 'patient');
+        final role = UserRole.fromString(profile['role'] as String? ?? 'client');
         final currentPath = state.matchedLocation;
 
         // Si el rol no tiene acceso a esta ruta → redirigir a su panel
@@ -68,8 +69,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const LoginScreen(),
       ),
       GoRoute(
-        path: '/patient',
-        builder: (context, state) => const PatientDashboard(),
+        path: '/client',
+        builder: (context, state) => const ClientDashboard(),
+      ),
+      GoRoute(
+        path: '/link-clinic',
+        builder: (context, state) => const LinkClinicScreen(),
       ),
       GoRoute(
         path: '/dentist',
@@ -128,7 +133,7 @@ final GoRouter appRouter = GoRouter(
             .eq('id', user.id)
             .single();
 
-        final role = UserRole.fromString(profile['role'] as String? ?? 'patient');
+        final role = UserRole.fromString(profile['role'] as String? ?? 'client');
         return role.initialRoute;
       } catch (e) {
         return null;
@@ -142,7 +147,7 @@ final GoRouter appRouter = GoRouter(
           .eq('id', user.id)
           .single();
 
-      final role = UserRole.fromString(profile['role'] as String? ?? 'patient');
+      final role = UserRole.fromString(profile['role'] as String? ?? 'client');
       final currentPath = state.matchedLocation;
 
       if (!role.canAccessRoute(currentPath)) {
@@ -160,8 +165,12 @@ final GoRouter appRouter = GoRouter(
       builder: (context, state) => const LoginScreen(),
     ),
     GoRoute(
-      path: '/patient',
-      builder: (context, state) => const PatientDashboard(),
+      path: '/client',
+      builder: (context, state) => const ClientDashboard(),
+    ),
+    GoRoute(
+      path: '/link-clinic',
+      builder: (context, state) => const LinkClinicScreen(),
     ),
     GoRoute(
       path: '/dentist',

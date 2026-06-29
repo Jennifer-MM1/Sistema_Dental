@@ -36,8 +36,8 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   email TEXT NOT NULL,
   phone TEXT,
   avatar_url TEXT,
-  role TEXT NOT NULL DEFAULT 'patient'
-    CHECK (role IN ('super_admin', 'admin_dentist', 'admin_secretary', 'patient')),
+  role TEXT NOT NULL DEFAULT 'client'
+    CHECK (role IN ('super_admin', 'admin_dentist', 'admin_secretary', 'client')),
   is_active BOOLEAN DEFAULT true,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -49,12 +49,30 @@ CREATE POLICY "Actualización propia" ON public.profiles
 CREATE POLICY "Inserción de perfiles" ON public.profiles
   FOR INSERT TO authenticated WITH CHECK (true);
 
+-- 2.5 PATIENTS — Fichas médicas (Multi-paciente por cuenta)
+CREATE TABLE IF NOT EXISTS public.patients (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  profile_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE NOT NULL,
+  first_name TEXT NOT NULL,
+  last_name TEXT NOT NULL,
+  date_of_birth DATE,
+  relationship TEXT DEFAULT 'self' CHECK (relationship IN ('self', 'child', 'spouse', 'parent', 'other')),
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+ALTER TABLE public.patients ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Pacientes visibles para la clínica y el perfil dueño" ON public.patients
+  FOR SELECT TO authenticated USING (true);
+CREATE POLICY "Inserción de pacientes" ON public.patients
+  FOR INSERT TO authenticated WITH CHECK (true);
+CREATE POLICY "Actualización de pacientes" ON public.patients
+  FOR UPDATE TO authenticated USING (true);
+
 -- 3. CLINIC_MEMBERSHIPS — Vinculación usuario ↔ clínica
 CREATE TABLE IF NOT EXISTS public.clinic_memberships (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   clinic_id UUID REFERENCES public.clinics(id) ON DELETE CASCADE NOT NULL,
   user_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE NOT NULL,
-  role_in_clinic TEXT NOT NULL CHECK (role_in_clinic IN ('owner', 'dentist', 'secretary', 'patient')),
+  role_in_clinic TEXT NOT NULL CHECK (role_in_clinic IN ('owner', 'dentist', 'secretary', 'client')),
   is_active BOOLEAN DEFAULT true,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   UNIQUE(clinic_id, user_id)
@@ -96,7 +114,7 @@ CREATE POLICY "Servicios visibles" ON public.services
 CREATE TABLE IF NOT EXISTS public.appointments (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   clinic_id UUID REFERENCES public.clinics(id) ON DELETE CASCADE NOT NULL,
-  patient_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE NOT NULL,
+  patient_id UUID REFERENCES public.patients(id) ON DELETE CASCADE NOT NULL,
   doctor_id UUID REFERENCES public.doctors(id) ON DELETE CASCADE NOT NULL,
   service_id UUID REFERENCES public.services(id) ON DELETE CASCADE NOT NULL,
   date_time TIMESTAMPTZ NOT NULL,
@@ -162,8 +180,20 @@ BEGIN
     COALESCE(new.raw_user_meta_data->>'name', 'Nuevo Usuario'),
     new.email,
     new.phone,
-    COALESCE(new.raw_user_meta_data->>'role', 'patient')
+    COALESCE(new.raw_user_meta_data->>'role', 'client')
   );
+  
+  -- Si es cliente, crear automáticamente su ficha principal (self)
+  IF COALESCE(new.raw_user_meta_data->>'role', 'client') = 'client' THEN
+    INSERT INTO public.patients (profile_id, first_name, last_name, relationship)
+    VALUES (
+      new.id,
+      split_part(COALESCE(new.raw_user_meta_data->>'name', 'Nuevo Usuario'), ' ', 1),
+      COALESCE(NULLIF(split_part(COALESCE(new.raw_user_meta_data->>'name', 'Nuevo Usuario'), ' ', 2), ''), 'Apellido'),
+      'self'
+    );
+  END IF;
+
   RETURN new;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
@@ -249,7 +279,7 @@ INSERT INTO auth.users (
   NOW(), NOW(), '', '', '', '', '', '', ''
 );
 
--- Usuario 4: Paciente
+-- Usuario 4: Cliente
 INSERT INTO auth.users (
   instance_id, id, aud, role, email, encrypted_password,
   email_confirmed_at, raw_app_meta_data, raw_user_meta_data,
@@ -259,11 +289,11 @@ INSERT INTO auth.users (
 ) VALUES (
   '00000000-0000-0000-0000-000000000000',
   gen_random_uuid(), 'authenticated', 'authenticated',
-  'paciente@dentalsync.com',
+  'cliente@dentalsync.com',
   crypt('Dental2026!', gen_salt('bf')),
   NOW(),
   '{"provider": "email", "providers": ["email"]}'::jsonb,
-  '{"name": "Carlos Mendoza", "role": "patient"}'::jsonb,
+  '{"name": "Carlos Mendoza", "role": "client"}'::jsonb,
   NOW(), NOW(), '', '', '', '', '', '', ''
 );
 
@@ -298,8 +328,8 @@ SELECT 'a0000000-0000-0000-0000-000000000001', id, 'secretary'
 FROM public.profiles WHERE email = 'secretaria@dentalsync.com';
 
 INSERT INTO public.clinic_memberships (clinic_id, user_id, role_in_clinic)
-SELECT 'a0000000-0000-0000-0000-000000000001', id, 'patient'
-FROM public.profiles WHERE email = 'paciente@dentalsync.com';
+SELECT 'a0000000-0000-0000-0000-000000000001', id, 'client'
+FROM public.profiles WHERE email = 'cliente@dentalsync.com';
 
 -- Crear registro de doctor para la dentista
 INSERT INTO public.doctors (user_id, clinic_id, specialty, cabin_assigned)
@@ -313,3 +343,34 @@ INSERT INTO public.services (clinic_id, service_name, price, duration_mins) VALU
   ('a0000000-0000-0000-0000-000000000001', 'Blanqueamiento', 250.00, 60),
   ('a0000000-0000-0000-0000-000000000001', 'Ortodoncia', 120.00, 45),
   ('a0000000-0000-0000-0000-000000000001', 'Extracción', 150.00, 40);
+-- ============================================================
+-- PASO 6: CREAR CITAS DE PRUEBA
+-- ============================================================
+
+-- Variables
+DO \$\$
+DECLARE
+  v_clinic_id UUID := 'a0000000-0000-0000-0000-000000000001';
+  v_client_id UUID;
+  v_patient_id UUID;
+  v_doctor_id UUID;
+  v_service_1_id UUID;
+  v_service_2_id UUID;
+BEGIN
+  -- Get IDs
+  SELECT id INTO v_client_id FROM public.profiles WHERE email = 'cliente@dentalsync.com' LIMIT 1;
+  SELECT id INTO v_patient_id FROM public.patients WHERE profile_id = v_client_id LIMIT 1;
+  SELECT id INTO v_doctor_id FROM public.doctors LIMIT 1;
+  SELECT id INTO v_service_1_id FROM public.services WHERE service_name = 'Limpieza Dental' LIMIT 1;
+  SELECT id INTO v_service_2_id FROM public.services WHERE service_name = 'Ortodoncia' LIMIT 1;
+
+  IF v_patient_id IS NOT NULL AND v_doctor_id IS NOT NULL THEN
+    -- Insert appointment 1: Upcoming
+    INSERT INTO public.appointments (clinic_id, patient_id, doctor_id, service_id, date_time, status, queue_code)
+    VALUES (v_clinic_id, v_patient_id, v_doctor_id, v_service_1_id, NOW() + INTERVAL '1 day', 'upcoming', 'C-100');
+
+    -- Insert appointment 2: In Lobby (Queue test)
+    INSERT INTO public.appointments (clinic_id, patient_id, doctor_id, service_id, date_time, status, queue_code)
+    VALUES (v_clinic_id, v_patient_id, v_doctor_id, v_service_2_id, NOW(), 'in_lobby', 'D-129');
+  END IF;
+END \$\$

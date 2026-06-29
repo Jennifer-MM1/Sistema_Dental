@@ -3,16 +3,21 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sistema_dental/core/theme/app_colors.dart';
 import 'package:go_router/go_router.dart';
 import 'package:sistema_dental/features/auth/providers/auth_providers.dart';
-import 'package:sistema_dental/features/patient/data/notification_repository.dart';
+import 'package:sistema_dental/features/client/data/notification_repository.dart';
+import 'package:sistema_dental/features/client/data/patient_repository.dart';
+import 'package:sistema_dental/features/shared/data/appointment_repository.dart';
+import 'package:sistema_dental/features/client/presentation/widgets/patient_selector.dart';
+import 'package:sistema_dental/core/models/appointment.dart';
+import 'package:intl/intl.dart';
 
-class PatientDashboard extends ConsumerStatefulWidget {
-  const PatientDashboard({super.key});
+class ClientDashboard extends ConsumerStatefulWidget {
+  const ClientDashboard({super.key});
 
   @override
-  ConsumerState<PatientDashboard> createState() => _PatientDashboardState();
+  ConsumerState<ClientDashboard> createState() => _ClientDashboardState();
 }
 
-class _PatientDashboardState extends ConsumerState<PatientDashboard> {
+class _ClientDashboardState extends ConsumerState<ClientDashboard> {
   int _selectedIndex = 0;
 
   @override
@@ -75,19 +80,23 @@ class _PatientDashboardState extends ConsumerState<PatientDashboard> {
     final userName = userAsync.value?.name ?? 'Paciente';
 
     if (_selectedIndex == 1) {
-      return const PatientScheduleView();
+      return const ClientScheduleView();
     } else if (_selectedIndex == 3) {
-      return const PatientProfileView();
+      return const ClientProfileView();
     }
     
     // Vista Home
+    final selectedPatient = ref.watch(selectedPatientProvider);
+    final displayFirstName = selectedPatient?.firstName ?? userName.split(' ').first;
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          const PatientSelector(),
           Text(
-            '¡Hola, $userName!',
+            '¡Hola, $displayFirstName!',
             style: const TextStyle(
               fontSize: 32,
               fontWeight: FontWeight.bold,
@@ -122,7 +131,7 @@ class _PatientDashboardState extends ConsumerState<PatientDashboard> {
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                           decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.2),
+                            color: Colors.white.withValues(alpha: 0.2),
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: const Text('PRÓXIMA CITA', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
@@ -147,7 +156,7 @@ class _PatientDashboardState extends ConsumerState<PatientDashboard> {
                     Container(
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.2),
+                        color: Colors.white.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: const Icon(Icons.calendar_month, color: Colors.white, size: 20),
@@ -329,11 +338,13 @@ class _PatientDashboardState extends ConsumerState<PatientDashboard> {
 }
 
 // Vista de Schedule (Segunda pestaña)
-class PatientScheduleView extends StatelessWidget {
-  const PatientScheduleView({super.key});
+class ClientScheduleView extends ConsumerWidget {
+  const ClientScheduleView({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final appointmentsAsync = ref.watch(clientAppointmentsProvider);
+
     return Padding(
       padding: const EdgeInsets.all(20.0),
       child: Column(
@@ -375,94 +386,120 @@ class PatientScheduleView extends StatelessWidget {
           ),
           const SizedBox(height: 24),
           
-          const Text('Your Current Turn', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 16),
-          
-          // Tarjeta de Turno
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: AppColors.primaryBlue,
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text('QUEUE NUMBER', style: TextStyle(color: Colors.white70, fontSize: 12, letterSpacing: 1)),
-                    const Text('ESTIMATED: 12 MIN', style: TextStyle(color: Colors.white70, fontSize: 12, letterSpacing: 1)),
+          appointmentsAsync.when(
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (err, stack) => Center(child: Text('Error: $err')),
+            data: (appointments) {
+              if (appointments.isEmpty) {
+                return const Center(child: Text('No appointments found.'));
+              }
+
+              final activeAppts = appointments.where((a) => a.status == 'in_lobby' || a.status == 'in_treatment').toList();
+              final activeAppt = activeAppts.isNotEmpty ? activeAppts.first : null;
+              final otherAppts = appointments.where((a) => a.id != (activeAppt?.id)).toList();
+
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (activeAppt != null) ...[
+                    const Text('Your Current Turn', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 16),
+                    _buildCurrentTurnCard(activeAppt),
+                    const SizedBox(height: 24),
                   ],
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text('B-42', style: TextStyle(color: Colors.white, fontSize: 48, fontWeight: FontWeight.bold)),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: AppColors.warning,
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Row(
-                        children: const [
-                          Icon(Icons.circle, color: Colors.white, size: 10),
-                          SizedBox(width: 4),
-                          Text('IN QUEUE', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 20),
-                const Divider(color: Colors.white24),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: const Icon(Icons.person, color: Colors.white),
-                    ),
-                    const SizedBox(width: 16),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: const [
-                        Text('Dr. Sarah Jenkins', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
-                        Text('Root Canal Consultation', style: TextStyle(color: Colors.white70, fontSize: 14)),
-                      ],
-                    ),
-                  ],
-                ),
-              ],
-            ),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('All Appointments', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                      const Text('View Calendar', style: TextStyle(color: AppColors.primaryBlue, fontWeight: FontWeight.bold)),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  ...otherAppts.map((appt) => Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: _buildAppointmentListCard(appt),
+                      )),
+                ],
+              );
+            },
           ),
-          
-          const SizedBox(height: 24),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text('All Appointments', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-              const Text('View Calendar', style: TextStyle(color: AppColors.primaryBlue, fontWeight: FontWeight.bold)),
-            ],
-          ),
-          const SizedBox(height: 16),
-          
-          // Lista de citas
-          _buildAppointmentListCard('OCT', '24', 'Michael Chen', 'Annual Cleaning • 09:30 AM'),
-          const SizedBox(height: 12),
-          _buildAppointmentListCard('OCT', '24', 'Elena Rodriguez', 'Orthodontics Checkup • 02:15 PM'),
         ],
       ),
     );
   }
 
-  Widget _buildAppointmentListCard(String month, String day, String patientOrDoctor, String details) {
+  Widget _buildCurrentTurnCard(Appointment appointment) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: AppColors.primaryBlue,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('QUEUE NUMBER', style: TextStyle(color: Colors.white70, fontSize: 12, letterSpacing: 1)),
+              const Text('ESTIMATED: 12 MIN', style: TextStyle(color: Colors.white70, fontSize: 12, letterSpacing: 1)),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(appointment.queueCode ?? 'N/A', style: const TextStyle(color: Colors.white, fontSize: 48, fontWeight: FontWeight.bold)),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: AppColors.warning,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.circle, color: Colors.white, size: 10),
+                    const SizedBox(width: 4),
+                    Text(appointment.status == 'in_lobby' ? 'IN QUEUE' : 'IN TREATMENT', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          const Divider(color: Colors.white24),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(Icons.person, color: Colors.white),
+              ),
+              const SizedBox(width: 16),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Dr. ${appointment.doctorName ?? 'Dentist'}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+                  Text(appointment.serviceName ?? 'Consultation', style: const TextStyle(color: Colors.white70, fontSize: 14)),
+                ],
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAppointmentListCard(Appointment appointment) {
+    final month = DateFormat('MMM').format(appointment.dateTime).toUpperCase();
+    final day = DateFormat('dd').format(appointment.dateTime);
+    final time = DateFormat('hh:mm a').format(appointment.dateTime);
+    final doctor = appointment.doctorName ?? 'Doctor';
+    final details = '${appointment.serviceName ?? 'Consultation'} • $time';
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -490,7 +527,7 @@ class PatientScheduleView extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(patientOrDoctor, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                Text(doctor, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                 const SizedBox(height: 4),
                 Text(details, style: const TextStyle(color: Colors.grey, fontSize: 14)),
               ],
@@ -504,8 +541,8 @@ class PatientScheduleView extends StatelessWidget {
 }
 
 // Vista de Perfil (Cuarta pestaña)
-class PatientProfileView extends ConsumerWidget {
-  const PatientProfileView({super.key});
+class ClientProfileView extends ConsumerWidget {
+  const ClientProfileView({super.key});
 
   void _showLinkWatchDialog(BuildContext context, WidgetRef ref) {
     showDialog(
@@ -735,7 +772,7 @@ class PatientProfileView extends ConsumerWidget {
                 if (context.mounted) context.go('/login');
               },
               style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.error.withOpacity(0.1),
+                backgroundColor: AppColors.error.withValues(alpha: 0.1),
                 foregroundColor: AppColors.error,
                 elevation: 0,
                 padding: const EdgeInsets.symmetric(vertical: 16),

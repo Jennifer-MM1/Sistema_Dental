@@ -31,7 +31,7 @@ class AppUser {
       email: map['email'] as String,
       phone: map['phone'] as String?,
       avatarUrl: map['avatar_url'] as String?,
-      role: UserRole.fromString(map['role'] as String? ?? 'patient'),
+      role: UserRole.fromString(map['role'] as String? ?? 'client'),
       isActive: map['is_active'] as bool? ?? true,
       createdAt: DateTime.parse(map['created_at'] as String),
     );

@@ -6,11 +6,9 @@ import 'package:sistema_dental/core/theme/app_colors.dart';
 import 'package:sistema_dental/core/supabase/supabase_provider.dart';
 import 'package:sistema_dental/features/auth/providers/auth_providers.dart';
 import 'package:sistema_dental/features/dentist/presentation/dentist_dashboard.dart';
-import 'package:sistema_dental/features/secretary/presentation/secretary_dashboard.dart';
 
-/// Dashboard exclusivo del Super Administrador.
-/// Permite navegar entre el panel del dentista y la secretaria,
-/// gestionar usuarios y generar códigos de invitación.
+/// Dashboard del Super Administrador (Dentista Principal).
+/// Permite navegar entre el panel clínico y las herramientas de gestión.
 class SuperAdminDashboard extends ConsumerStatefulWidget {
   const SuperAdminDashboard({super.key});
 
@@ -109,24 +107,20 @@ class _SuperAdminDashboardState extends ConsumerState<SuperAdminDashboard> {
 
           const SizedBox(height: 8),
 
-          // Sección Principal
-          _buildSectionLabel('PRINCIPAL'),
-          _buildSidebarItem(0, Icons.dashboard_outlined, 'Panel General'),
-          _buildSidebarItem(1, Icons.people_outline, 'Gestión de Usuarios'),
+          // Sección Clínica
+          _buildSectionLabel('CLÍNICA'),
+          _buildSidebarItem(0, Icons.dashboard_outlined, 'Dashboard Principal'),
+          _buildSidebarItem(1, Icons.people_outline, 'Fila de Espera'),
+          _buildSidebarItem(2, Icons.folder_open, 'Historial Clínico'),
+          _buildSidebarItem(3, Icons.qr_code_scanner, 'Pacientes y QR'),
 
           const SizedBox(height: 16),
 
-          // Sección Paneles
-          _buildSectionLabel('PANELES'),
-          _buildSidebarItem(2, Icons.medical_services_outlined, 'Vista Dentista'),
-          _buildSidebarItem(3, Icons.support_agent_outlined, 'Vista Secretaria'),
-
-          const SizedBox(height: 16),
-
-          // Sección Configuración
+          // Sección Sistema
           _buildSectionLabel('SISTEMA'),
-          _buildSidebarItem(4, Icons.qr_code, 'Códigos de Invitación'),
-          _buildSidebarItem(5, Icons.settings_outlined, 'Configuración'),
+          _buildSidebarItem(4, Icons.manage_accounts, 'Gestión de Usuarios'),
+          _buildSidebarItem(5, Icons.qr_code, 'Códigos de Invitación'),
+          _buildSidebarItem(6, Icons.settings_outlined, 'Configuración'),
 
           const Spacer(),
 
@@ -235,12 +229,13 @@ class _SuperAdminDashboardState extends ConsumerState<SuperAdminDashboard> {
 
   String _getTitle() {
     switch (_selectedIndex) {
-      case 0: return 'Panel General';
-      case 1: return 'Gestión de Usuarios';
-      case 2: return 'Vista Dentista';
-      case 3: return 'Vista Secretaria';
-      case 4: return 'Códigos de Invitación';
-      case 5: return 'Configuración';
+      case 0: return 'Dashboard Principal';
+      case 1: return 'Fila de Espera';
+      case 2: return 'Historial Clínico';
+      case 3: return 'Pacientes y QR';
+      case 4: return 'Gestión de Usuarios';
+      case 5: return 'Códigos de Invitación';
+      case 6: return 'Configuración';
       default: return 'DentalSync';
     }
   }
@@ -248,19 +243,21 @@ class _SuperAdminDashboardState extends ConsumerState<SuperAdminDashboard> {
   Widget _buildMainContent() {
     switch (_selectedIndex) {
       case 0:
-        return _buildOverviewPanel();
+        return const DashboardView();
       case 1:
-        return _buildUsersManagementPanel();
+        return const QueueView();
       case 2:
-        return const DentistDashboard();
+        return const CalendarView();
       case 3:
-        return const SecretaryDashboard();
+        return const PatientsView();
       case 4:
-        return _buildInvitationCodesPanel();
+        return _buildUsersManagementPanel();
       case 5:
+        return _buildInvitationCodesPanel();
+      case 6:
         return _buildSettingsPanel();
       default:
-        return _buildOverviewPanel();
+        return const DashboardView();
     }
   }
 

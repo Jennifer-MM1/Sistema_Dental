@@ -4,7 +4,7 @@ enum UserRole {
   superAdmin,     // Acceso a panel dentista + secretaria
   adminDentist,   // Acceso a panel dentista (tablet)
   adminSecretary, // Acceso a panel secretaria (escritorio)
-  patient;        // Acceso a panel paciente (móvil + smartwatch)
+  client;         // Acceso a panel cliente (móvil + smartwatch)
 
   /// Convierte la cadena almacenada en Supabase al enum correspondiente.
   static UserRole fromString(String role) {
@@ -15,10 +15,10 @@ enum UserRole {
         return UserRole.adminDentist;
       case 'admin_secretary':
         return UserRole.adminSecretary;
-      case 'patient':
-        return UserRole.patient;
+      case 'client':
+        return UserRole.client;
       default:
-        return UserRole.patient;
+        return UserRole.client;
     }
   }
 
@@ -31,8 +31,8 @@ enum UserRole {
         return 'admin_dentist';
       case UserRole.adminSecretary:
         return 'admin_secretary';
-      case UserRole.patient:
-        return 'patient';
+      case UserRole.client:
+        return 'client';
     }
   }
 
@@ -45,8 +45,8 @@ enum UserRole {
         return '/dentist';
       case UserRole.adminSecretary:
         return '/secretary';
-      case UserRole.patient:
-        return '/patient';
+      case UserRole.client:
+        return '/client';
     }
   }
 
@@ -59,8 +59,8 @@ enum UserRole {
         return 'Dentista';
       case UserRole.adminSecretary:
         return 'Secretaria';
-      case UserRole.patient:
-        return 'Paciente';
+      case UserRole.client:
+        return 'Cliente';
     }
   }
 
@@ -73,8 +73,8 @@ enum UserRole {
         return route.startsWith('/dentist');
       case UserRole.adminSecretary:
         return route.startsWith('/secretary');
-      case UserRole.patient:
-        return route.startsWith('/patient');
+      case UserRole.client:
+        return route.startsWith('/client') || route.startsWith('/link-clinic');
     }
   }
 }

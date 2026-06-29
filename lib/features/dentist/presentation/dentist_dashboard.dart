@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sistema_dental/core/theme/app_colors.dart';
 import 'package:go_router/go_router.dart';
+import 'package:sistema_dental/features/shared/data/appointment_repository.dart';
+import 'package:sistema_dental/core/models/appointment.dart';
+import 'package:intl/intl.dart';
 
 class DentistDashboard extends StatefulWidget {
   const DentistDashboard({super.key});
@@ -63,9 +67,9 @@ class _DentistDashboardState extends State<DentistDashboard> {
           ),
           const SizedBox(height: 16),
           _buildSidebarItem(0, Icons.grid_view, 'Dashboard'),
-          _buildSidebarItem(1, Icons.people_outline, 'Patient Queue'),
+          _buildSidebarItem(1, Icons.access_time, 'Patient Queue'),
           _buildSidebarItem(2, Icons.folder_open, 'Clinical Records'),
-          _buildSidebarItem(3, Icons.sync, 'Team Sync'),
+          _buildSidebarItem(3, Icons.people, 'Patients & QR'),
           _buildSidebarItem(4, Icons.settings_outlined, 'Settings'),
           const Spacer(),
           Padding(
@@ -128,9 +132,9 @@ class _DentistDashboardState extends State<DentistDashboard> {
         margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         decoration: BoxDecoration(
-          color: isSelected ? Colors.white : Colors.transparent,
+          color: isSelected ? Colors.white.withAlpha(26) : Colors.transparent,
           borderRadius: BorderRadius.circular(8),
-          boxShadow: isSelected ? [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 4)] : null,
+          boxShadow: isSelected ? [BoxShadow(color: Colors.black.withAlpha(13), blurRadius: 4)] : null,
         ),
         child: Row(
           children: [
@@ -200,6 +204,8 @@ class _DentistDashboardState extends State<DentistDashboard> {
         return const QueueView();
       case 2:
         return const CalendarView();
+      case 3:
+        return const PatientsView();
       case 4:
         return const SettingsView();
       default:
@@ -354,7 +360,7 @@ class DashboardView extends StatelessWidget {
               const Divider(),
               _buildQueueItem('Chidi Anagonye', 'Root Canal Follow-up', '09:45 AM', 'Waiting', Colors.grey.shade200),
               const Divider(),
-              _buildQueueItem('Tahani Al-Jamil', 'Orthodontic Adjustment', '10:30 AM', 'Delayed', AppColors.error.withOpacity(0.1), isError: true),
+              _buildQueueItem('Tahani Al-Jamil', 'Orthodontic Adjustment', '10:30 AM', 'Delayed', AppColors.error.withValues(alpha: 0.1), isError: true),
             ],
           ),
         ),
@@ -486,7 +492,7 @@ class DashboardView extends StatelessWidget {
       child: Row(
         children: [
           CircleAvatar(
-            backgroundColor: AppColors.primaryBlue.withOpacity(0.1),
+            backgroundColor: AppColors.primaryBlue.withValues(alpha: 0.1),
             child: Text(name.substring(0, 2), style: const TextStyle(color: AppColors.primaryBlue)),
           ),
           const SizedBox(width: 16),
@@ -520,133 +526,169 @@ class DashboardView extends StatelessWidget {
   }
 }
 
-class QueueView extends StatelessWidget {
+class QueueView extends ConsumerWidget {
   const QueueView({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final isDesktop = MediaQuery.of(context).size.width > 900;
+    final queueAsync = ref.watch(clinicQueueProvider);
     
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: SingleChildScrollView(
         padding: EdgeInsets.all(isDesktop ? 32 : 16),
         child: Column(
-          children: [
-             // "Próximo na fila" Card
-             Container(
-               width: double.infinity,
-               padding: EdgeInsets.all(isDesktop ? 24 : 16),
-               decoration: BoxDecoration(
-                 color: Colors.white,
-                 borderRadius: BorderRadius.circular(16),
-                 boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)],
-               ),
-               child: Column(
-                 crossAxisAlignment: CrossAxisAlignment.start,
-                 children: [
-                   Row(
-                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                     children: [
-                       Container(
-                         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                         decoration: BoxDecoration(color: AppColors.primaryBlue, borderRadius: BorderRadius.circular(16)),
-                         child: const Text('Próximo en Fila', style: TextStyle(color: Colors.white, fontSize: 12)),
-                       ),
-                       const Flexible(child: Text('Cabina 04 Disponible', style: TextStyle(color: AppColors.textSecondary), overflow: TextOverflow.ellipsis)),
-                     ],
-                   ),
-                   const SizedBox(height: 16),
-                   const Text('Ricardo Oliveira', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-                   const Text('Ticket #D-128 • Limpieza Periódica', style: TextStyle(color: AppColors.textSecondary)),
-                   const SizedBox(height: 24),
-                   isDesktop ? Row(
-                     children: [
-                       Expanded(
-                         flex: 3,
-                         child: ElevatedButton.icon(
-                           onPressed: () {},
-                           style: ElevatedButton.styleFrom(backgroundColor: AppColors.secondaryBlue, padding: const EdgeInsets.symmetric(vertical: 16)),
-                           icon: const Icon(Icons.call_made),
-                           label: const Text('Llamar Próximo Paciente'),
-                         ),
-                       ),
-                       const SizedBox(width: 16),
-                       Expanded(
-                         flex: 1,
-                         child: OutlinedButton(
-                           onPressed: () {},
-                           style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 16)),
-                           child: const Text('Saltar'),
-                         ),
-                       ),
-                     ],
-                   ) : Column(
-                     crossAxisAlignment: CrossAxisAlignment.stretch,
-                     children: [
-                       ElevatedButton.icon(
-                         onPressed: () {},
-                         style: ElevatedButton.styleFrom(backgroundColor: AppColors.secondaryBlue, padding: const EdgeInsets.symmetric(vertical: 16)),
-                         icon: const Icon(Icons.call_made),
-                         label: const Text('Llamar Próximo Paciente'),
-                       ),
-                       const SizedBox(height: 8),
-                       OutlinedButton(
-                         onPressed: () {},
-                         style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 16)),
-                         child: const Text('Saltar'),
-                       ),
-                     ],
-                   )
-                 ],
-               ),
-             ),
-             const SizedBox(height: 32),
-             // Tabla con SingleChildScrollView para evitar desbordamiento
-             Container(
-               width: double.infinity,
-               padding: EdgeInsets.all(isDesktop ? 24 : 16),
-               decoration: BoxDecoration(
-                 color: Colors.white,
-                 borderRadius: BorderRadius.circular(16),
-               ),
-               child: Column(
-                 crossAxisAlignment: CrossAxisAlignment.start,
-                 children: [
-                   Row(
-                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                     children: [
-                       const Text('Detalles de Cola', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                       OutlinedButton.icon(onPressed: () {}, icon: const Icon(Icons.filter_list, size: 16), label: const Text('Filter')),
-                     ],
-                   ),
-                   const SizedBox(height: 16),
-                   SingleChildScrollView(
-                     scrollDirection: Axis.horizontal,
-                     child: ConstrainedBox(
-                       constraints: BoxConstraints(minWidth: isDesktop ? 600 : 700),
-                       child: Column(
-                         children: [
-                           Row(
-                             children: const [
-                               SizedBox(width: 80, child: Text('Ticket', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey))),
-                               SizedBox(width: 200, child: Text('Paciente', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey))),
-                               SizedBox(width: 150, child: Text('Servicio', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey))),
-                               SizedBox(width: 100, child: Text('Espera', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey))),
-                               SizedBox(width: 150, child: Text('Estado', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey))),
-                             ],
-                           ),
-                           const Divider(),
-                           _buildRow('#D-127', 'Marcos Andreotti', 'Endodoncia', '45 min', 'En Tratamiento', AppColors.primaryBlue),
-                           const Divider(),
-                           _buildRow('#D-128', 'Ricardo Oliveira', 'Limpieza', '22 min', 'Preparando', Colors.teal),
-                         ],
-                       ),
-                     ),
-                   ),
-                 ],
-               ),
-             )
+          children: [          queueAsync.when(
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (err, stack) => Center(child: Text('Error: $err')),
+            data: (queue) {
+              final nextAppt = queue.where((a) => a.status == 'upcoming' || a.status == 'in_lobby').firstOrNull;
+
+              return Column(
+                children: [
+                  // "Próximo na fila" Card
+                  if (nextAppt != null)
+                    Container(
+                      width: double.infinity,
+                      padding: EdgeInsets.all(isDesktop ? 24 : 16),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10)],
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                decoration: BoxDecoration(color: AppColors.primaryBlue, borderRadius: BorderRadius.circular(16)),
+                                child: const Text('Próximo en Fila', style: TextStyle(color: Colors.white, fontSize: 12)),
+                              ),
+                              Flexible(child: Text(nextAppt.status == 'in_lobby' ? 'Esperando' : 'Próximo', style: const TextStyle(color: AppColors.textSecondary), overflow: TextOverflow.ellipsis)),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                          Text(nextAppt.patientName ?? 'Paciente', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+                          Text('Ticket #${nextAppt.queueCode ?? 'N/A'} • ${nextAppt.serviceName ?? 'Consulta'}', style: const TextStyle(color: AppColors.textSecondary)),
+                          const SizedBox(height: 24),
+                          isDesktop ? Row(
+                            children: [
+                              Expanded(
+                                flex: 3,
+                                child: ElevatedButton.icon(
+                                  onPressed: () {
+                                    ref.read(appointmentRepositoryProvider).updateAppointmentStatus(nextAppt.id, 'in_treatment');
+                                  },
+                                  style: ElevatedButton.styleFrom(backgroundColor: AppColors.secondaryBlue, padding: const EdgeInsets.symmetric(vertical: 16)),
+                                  icon: const Icon(Icons.call_made),
+                                  label: const Text('Llamar Próximo Paciente'),
+                                ),
+                              ),
+                              const SizedBox(width: 16),
+                              Expanded(
+                                flex: 1,
+                                child: OutlinedButton(
+                                  onPressed: () {},
+                                  style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 16)),
+                                  child: const Text('Saltar'),
+                                ),
+                              ),
+                            ],
+                          ) : Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              ElevatedButton.icon(
+                                onPressed: () {
+                                  ref.read(appointmentRepositoryProvider).updateAppointmentStatus(nextAppt.id, 'in_treatment');
+                                },
+                                style: ElevatedButton.styleFrom(backgroundColor: AppColors.secondaryBlue, padding: const EdgeInsets.symmetric(vertical: 16)),
+                                icon: const Icon(Icons.call_made),
+                                label: const Text('Llamar Próximo Paciente'),
+                              ),
+                              const SizedBox(height: 8),
+                              OutlinedButton(
+                                onPressed: () {},
+                                style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 16)),
+                                child: const Text('Saltar'),
+                              ),
+                            ],
+                          )
+                        ],
+                      ),
+                    ),
+                  if (nextAppt == null)
+                    const Center(child: Padding(
+                      padding: EdgeInsets.all(32.0),
+                      child: Text('No hay pacientes en fila', style: TextStyle(fontSize: 18, color: Colors.grey)),
+                    )),
+                  const SizedBox(height: 32),
+                  // Tabla con SingleChildScrollView para evitar desbordamiento
+                  Container(
+                    width: double.infinity,
+                    padding: EdgeInsets.all(isDesktop ? 24 : 16),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text('Detalles de Cola', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                            OutlinedButton.icon(onPressed: () {}, icon: const Icon(Icons.filter_list, size: 16), label: const Text('Filter')),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+                        SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: ConstrainedBox(
+                            constraints: BoxConstraints(minWidth: isDesktop ? 600 : 700),
+                            child: Column(
+                              children: [
+                                Row(
+                                  children: const [
+                                    SizedBox(width: 80, child: Text('Ticket', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey))),
+                                    SizedBox(width: 200, child: Text('Paciente', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey))),
+                                    SizedBox(width: 150, child: Text('Servicio', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey))),
+                                    SizedBox(width: 100, child: Text('Hora', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey))),
+                                    SizedBox(width: 150, child: Text('Estado', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey))),
+                                  ],
+                                ),
+                                const Divider(),
+                                ...queue.map((appt) {
+                                  final statusStr = appt.status == 'in_treatment' ? 'En Tratamiento' : appt.status == 'in_lobby' ? 'En Sala' : 'Pendiente';
+                                  final color = appt.status == 'in_treatment' ? AppColors.primaryBlue : appt.status == 'in_lobby' ? AppColors.warning : Colors.grey;
+                                  return Column(
+                                    children: [
+                                      _buildRow(
+                                        '#${appt.queueCode ?? 'N/A'}', 
+                                        appt.patientName ?? 'Paciente', 
+                                        appt.serviceName ?? 'Consulta', 
+                                        DateFormat('hh:mm a').format(appt.dateTime), 
+                                        statusStr, 
+                                        color
+                                      ),
+                                      const Divider(),
+                                    ],
+                                  );
+                                }),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
           ],
         ),
       ),
@@ -716,6 +758,134 @@ class CalendarView extends StatelessWidget {
         onPressed: () {},
         backgroundColor: AppColors.secondaryBlue,
         child: const Icon(Icons.add, color: Colors.white),
+      ),
+    );
+  }
+}
+
+class PatientsView extends StatelessWidget {
+  const PatientsView({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Pacientes y Vinculación', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+            const Text('Gestiona la lista de pacientes de la clínica e invita a nuevos.', style: TextStyle(color: Colors.grey)),
+            const SizedBox(height: 24),
+            Row(
+              children: [
+                ElevatedButton.icon(
+                  onPressed: () => _showQRCodeDialog(context),
+                  icon: const Icon(Icons.qr_code),
+                  label: const Text('Generar QR / Código de Invitación'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primaryBlue,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                OutlinedButton.icon(
+                  onPressed: () {},
+                  icon: const Icon(Icons.person_add),
+                  label: const Text('Añadir Paciente Manual'),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 32),
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: Colors.grey.shade200),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Pacientes Registrados', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 16),
+                  const Divider(),
+                  _buildPatientRow('Carlos Mendoza', 'D-127', '21/10/2026'),
+                  const Divider(),
+                  _buildPatientRow('Ana López', 'D-128', '22/10/2026'),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showQRCodeDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Código de Invitación', textAlign: TextAlign.center),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Pídele al paciente que escanee este código desde su app.', textAlign: TextAlign.center),
+            const SizedBox(height: 24),
+            Container(
+              width: 200,
+              height: 200,
+              color: Colors.grey.shade200,
+              child: const Center(child: Icon(Icons.qr_code_2, size: 150, color: AppColors.primaryBlue)),
+            ),
+            const SizedBox(height: 24),
+            const Text('O ingresa este código manualmente:', style: TextStyle(color: Colors.grey)),
+            const SizedBox(height: 8),
+            const Text(
+              'DENT-123456',
+              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, letterSpacing: 4, color: AppColors.primaryBlue),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cerrar'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPatientRow(String name, String id, String date) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8.0),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Row(
+            children: [
+              const CircleAvatar(
+                backgroundColor: AppColors.lightBlueAccent,
+                child: Icon(Icons.person, color: AppColors.primaryBlue),
+              ),
+              const SizedBox(width: 16),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(name, style: const TextStyle(fontWeight: FontWeight.bold)),
+                  Text('ID: $id', style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                ],
+              ),
+            ],
+          ),
+          Text('Última visita: $date', style: const TextStyle(color: Colors.grey, fontSize: 12)),
+        ],
       ),
     );
   }
