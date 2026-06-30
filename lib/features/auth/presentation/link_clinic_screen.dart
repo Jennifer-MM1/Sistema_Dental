@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:sistema_dental/core/theme/app_colors.dart';
+import 'package:sistema_dental/features/auth/providers/auth_providers.dart';
 
 class LinkClinicScreen extends ConsumerStatefulWidget {
   const LinkClinicScreen({super.key});
@@ -20,20 +21,48 @@ class _LinkClinicScreenState extends ConsumerState<LinkClinicScreen> {
     super.dispose();
   }
 
-  void _handleLinkCode() {
+  bool _isLinking = false;
+
+  Future<void> _handleLinkCode() async {
     final code = _codeController.text.trim();
     if (code.isEmpty) return;
 
-    // TODO: Validar código con Supabase y crear ClinicMembership
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('¡Clínica vinculada con éxito!'),
-        backgroundColor: AppColors.success,
-      ),
-    );
+    setState(() {
+      _isLinking = true;
+    });
 
-    // Redirigir al panel del paciente
-    context.go('/patient');
+    final authRepo = ref.read(authRepositoryProvider);
+    final role = await authRepo.linkClinicWithCode(code);
+
+    if (!mounted) return;
+    setState(() {
+      _isLinking = false;
+    });
+
+    if (role != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('¡Clínica vinculada con éxito!'),
+          backgroundColor: AppColors.success,
+        ),
+      );
+
+      // Redirigir al panel correspondiente según el rol
+      if (role == 'super_admin' || role == 'admin_dentist') {
+        context.go('/super_admin');
+      } else if (role == 'admin_secretary') {
+        context.go('/secretary');
+      } else {
+        context.go('/patient');
+      }
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Código inválido o expirado.'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+    }
   }
 
   @override
@@ -179,10 +208,12 @@ class _LinkClinicScreenState extends ConsumerState<LinkClinicScreen> {
                   ),
                   elevation: 0,
                 ),
-                child: const Text(
-                  'Vincular Cuenta',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
+                child: _isLinking
+                    ? const CircularProgressIndicator(color: Colors.white)
+                    : const Text(
+                        'Vincular Cuenta',
+                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                      ),
               ),
             ],
           ),

@@ -55,11 +55,11 @@ class AuthRepository {
   /// Verifica si hay una sesión activa.
   bool get isAuthenticated => _client.auth.currentUser != null;
 
-  /// Vincula un paciente a una clínica usando un código de invitación (RF-03).
-  /// El dentista/secretaria genera el código y se lo entrega al paciente.
-  Future<bool> linkPatientWithCode(String code) async {
+  /// Vincula un usuario a una clínica usando un código de invitación.
+  /// Lee el rol del usuario de su perfil y lo asigna a la clínica.
+  Future<String?> linkClinicWithCode(String code) async {
     final user = _client.auth.currentUser;
-    if (user == null) return false;
+    if (user == null) return null;
 
     try {
       // Buscar el código de invitación no usado
@@ -70,6 +70,15 @@ class AuthRepository {
           .eq('is_used', false)
           .single();
 
+      // Obtener el rol del usuario desde su perfil
+      final profile = await _client
+          .from('profiles')
+          .select('role')
+          .eq('id', user.id)
+          .single();
+          
+      final role = profile['role'] as String;
+
       // Marcar el código como usado
       await _client
           .from('invitation_codes')
@@ -79,17 +88,26 @@ class AuthRepository {
           })
           .eq('id', codeData['id']);
 
-      // Crear la membresía clínica para el paciente
+      // Crear la membresía clínica para el usuario usando su rol
       await _client.from('clinic_memberships').insert({
         'clinic_id': codeData['clinic_id'],
         'user_id': user.id,
-        'role_in_clinic': 'patient',
+        'role_in_clinic': role,
         'is_active': true,
       });
 
-      return true;
+      return role;
     } catch (e) {
-      return false;
+      return null;
+    }
+  }
+
+  /// Elimina un código de invitación (usado para códigos efímeros).
+  Future<void> deleteInvitationCode(String code) async {
+    try {
+      await _client.from('invitation_codes').delete().eq('code', code);
+    } catch (e) {
+      // Ignorar error si no existe
     }
   }
 

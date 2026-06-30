@@ -112,7 +112,8 @@ class LoginNotifier extends Notifier<LoginState> {
     state = state.copyWith(isLoading: true, errorMessage: null);
 
     final repo = ref.read(authRepositoryProvider);
-    final success = await repo.linkPatientWithCode(code);
+    final role = await repo.linkClinicWithCode(code);
+    final success = role != null;
 
     if (!success) {
       state = state.copyWith(

@@ -6,6 +6,7 @@ import 'package:sistema_dental/core/theme/app_colors.dart';
 import 'package:sistema_dental/core/supabase/supabase_provider.dart';
 import 'package:sistema_dental/features/auth/providers/auth_providers.dart';
 import 'package:sistema_dental/features/dentist/presentation/dentist_dashboard.dart';
+import 'package:sistema_dental/features/super_admin/presentation/widgets/qr_invitation_view.dart';
 
 /// Dashboard del Super Administrador (Dentista Principal).
 /// Permite navegar entre el panel clínico y las herramientas de gestión.
@@ -112,15 +113,26 @@ class _SuperAdminDashboardState extends ConsumerState<SuperAdminDashboard> {
           _buildSidebarItem(0, Icons.dashboard_outlined, 'Dashboard Principal'),
           _buildSidebarItem(1, Icons.people_outline, 'Fila de Espera'),
           _buildSidebarItem(2, Icons.folder_open, 'Historial Clínico'),
-          _buildSidebarItem(3, Icons.qr_code_scanner, 'Pacientes y QR'),
+
+          const SizedBox(height: 16),
+
+          // Directorio
+          _buildSectionLabel('DIRECTORIO'),
+          _buildSidebarItem(3, Icons.person, 'Clientes'),
+          _buildSidebarItem(4, Icons.family_restroom, 'Pacientes'),
+          _buildSidebarItem(5, Icons.badge_outlined, 'Compañeros de Trabajo'),
+
+          const SizedBox(height: 16),
+
+          // Vinculación
+          _buildSectionLabel('VINCULACIÓN'),
+          _buildSidebarItem(6, Icons.qr_code_scanner, 'QR de Invitación'),
 
           const SizedBox(height: 16),
 
           // Sección Sistema
           _buildSectionLabel('SISTEMA'),
-          _buildSidebarItem(4, Icons.manage_accounts, 'Gestión de Usuarios'),
-          _buildSidebarItem(5, Icons.qr_code, 'Códigos de Invitación'),
-          _buildSidebarItem(6, Icons.settings_outlined, 'Configuración'),
+          _buildSidebarItem(7, Icons.settings_outlined, 'Configuración'),
 
           const Spacer(),
 
@@ -232,10 +244,11 @@ class _SuperAdminDashboardState extends ConsumerState<SuperAdminDashboard> {
       case 0: return 'Dashboard Principal';
       case 1: return 'Fila de Espera';
       case 2: return 'Historial Clínico';
-      case 3: return 'Pacientes y QR';
-      case 4: return 'Gestión de Usuarios';
-      case 5: return 'Códigos de Invitación';
-      case 6: return 'Configuración';
+      case 3: return 'Directorio: Clientes';
+      case 4: return 'Directorio: Pacientes';
+      case 5: return 'Compañeros de Trabajo';
+      case 6: return 'Generar QR Universal';
+      case 7: return 'Configuración';
       default: return 'DentalSync';
     }
   }
@@ -249,12 +262,14 @@ class _SuperAdminDashboardState extends ConsumerState<SuperAdminDashboard> {
       case 2:
         return const CalendarView();
       case 3:
-        return const PatientsView();
+        return _buildClientsPanel();
       case 4:
-        return _buildUsersManagementPanel();
+        return _buildPatientsPanel();
       case 5:
-        return _buildInvitationCodesPanel();
+        return _buildCoworkersPanel();
       case 6:
+        return const QRInvitationView();
+      case 7:
         return _buildSettingsPanel();
       default:
         return const DashboardView();
@@ -307,72 +322,11 @@ class _SuperAdminDashboardState extends ConsumerState<SuperAdminDashboard> {
     }
   }
 
-  Future<List<Map<String, dynamic>>> _fetchInvitationCodes() async {
-    final client = ref.read(supabaseClientProvider);
-    try {
-      final response = await client
-          .from('invitation_codes')
-          .select()
-          .order('created_at', ascending: false);
-      return List<Map<String, dynamic>>.from(response);
-    } catch (e) {
-      return [];
-    }
-  }
 
-  Future<void> _generateCode() async {
-    final client = ref.read(supabaseClientProvider);
-    final authRepo = ref.read(authRepositoryProvider);
-    try {
-      final clinicRes = await client.from('clinics').select('id').limit(1).maybeSingle();
-      final clinicId = clinicRes?['id'] ?? 'a0000000-0000-0000-0000-000000000001';
-      
-      final code = await authRepo.generateInvitationCode(clinicId as String);
-      if (code != null && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Código generado con éxito: $code'),
-            backgroundColor: AppColors.success,
-          ),
-        );
-        setState(() {}); // Recargar panel
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Error al generar el código'),
-            backgroundColor: AppColors.error,
-          ),
-        );
-      }
-    }
-  }
 
-  Future<void> _updateUserRole(String userId, String newRole) async {
-    final client = ref.read(supabaseClientProvider);
-    try {
-      await client.from('profiles').update({'role': newRole}).eq('id', userId);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Rol de usuario actualizado a: $newRole'),
-            backgroundColor: AppColors.success,
-          ),
-        );
-        setState(() {});
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Error al actualizar el rol'),
-            backgroundColor: AppColors.error,
-          ),
-        );
-      }
-    }
-  }
+
+
+
 
   Future<void> _toggleUserActive(String userId, bool currentStatus) async {
     final client = ref.read(supabaseClientProvider);
@@ -399,87 +353,7 @@ class _SuperAdminDashboardState extends ConsumerState<SuperAdminDashboard> {
     }
   }
 
-  // ──────── Panel General ────────
-  Widget _buildOverviewPanel() {
-    return FutureBuilder<Map<String, int>>(
-      future: _fetchStats(),
-      builder: (context, snapshot) {
-        final stats = snapshot.data ?? {
-          'totalUsers': 0,
-          'dentists': 0,
-          'patients': 0,
-          'todayAppointments': 0,
-        };
-        final isLoading = snapshot.connectionState == ConnectionState.waiting;
 
-        return SingleChildScrollView(
-          padding: const EdgeInsets.all(32),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (isLoading)
-                const Padding(
-                  padding: EdgeInsets.only(bottom: 16),
-                  child: LinearProgressIndicator(color: AppColors.primaryBlue),
-                ),
-              // Tarjetas de estadísticas
-              LayoutBuilder(
-                builder: (context, constraints) {
-                  final crossAxisCount = constraints.maxWidth > 800 ? 4 : 2;
-                  return GridView.count(
-                    crossAxisCount: crossAxisCount,
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    crossAxisSpacing: 20,
-                    mainAxisSpacing: 20,
-                    childAspectRatio: 1.8,
-                    children: [
-                      _buildStatCard('Usuarios Totales', stats['totalUsers'].toString(), Icons.people, AppColors.primaryBlue),
-                      _buildStatCard('Dentistas', stats['dentists'].toString(), Icons.medical_services, const Color(0xFF10B981)),
-                      _buildStatCard('Pacientes', stats['patients'].toString(), Icons.person_outline, const Color(0xFFF59E0B)),
-                      _buildStatCard('Citas Hoy', stats['todayAppointments'].toString(), Icons.calendar_today, const Color(0xFF8B5CF6)),
-                    ],
-                  );
-                },
-              ),
-              const SizedBox(height: 32),
-
-              // Actividad reciente
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(24),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.04),
-                      blurRadius: 10,
-                    ),
-                  ],
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Actividad Reciente',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 16),
-                    _buildActivityItem('Sistema', 'Base de datos conectada correctamente', Icons.check_circle, AppColors.success),
-                    const Divider(),
-                    _buildActivityItem('Sistema', 'Supabase inicializado', Icons.cloud_done, AppColors.primaryBlue),
-                    const Divider(),
-                    _buildActivityItem('Info', 'Modo Super Admin activo con permisos completos', Icons.info_outline, const Color(0xFFF59E0B)),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
 
   Widget _buildStatCard(String title, String value, IconData icon, Color color) {
     return Container(
@@ -549,12 +423,21 @@ class _SuperAdminDashboardState extends ConsumerState<SuperAdminDashboard> {
     );
   }
 
-  // ──────── Gestión de Usuarios ────────
-  Widget _buildUsersManagementPanel() {
+    // ──────── Gestión de Usuarios ────────
+  Widget _buildClientsPanel() {
+    return _buildFilteredProfilesPanel('Directorio de Clientes', 'Usuarios dueños de cuenta que han instalado la app', ['patient']);
+  }
+
+  Widget _buildCoworkersPanel() {
+    return _buildFilteredProfilesPanel('Compañeros de Trabajo', 'Secretarias y dentistas asociados a la clínica', ['admin_dentist', 'admin_secretary', 'super_admin']);
+  }
+
+  Widget _buildFilteredProfilesPanel(String title, String subtitle, List<String> validRoles) {
     return FutureBuilder<List<Map<String, dynamic>>>(
       future: _fetchProfiles(),
       builder: (context, snapshot) {
-        final profiles = snapshot.data ?? [];
+        var profiles = snapshot.data ?? [];
+        profiles = profiles.where((p) => validRoles.contains(p['role'] as String? ?? '')).toList();
         final isLoading = snapshot.connectionState == ConnectionState.waiting;
 
         return SingleChildScrollView(
@@ -562,30 +445,11 @@ class _SuperAdminDashboardState extends ConsumerState<SuperAdminDashboard> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Gestión de Usuarios', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-                      Text('Administra las cuentas y roles del sistema', style: TextStyle(color: AppColors.textSecondary)),
-                    ],
-                  ),
-                  ElevatedButton.icon(
-                    onPressed: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Para crear nuevos usuarios, utilicen el registro general o un código de invitación paciente.')),
-                      );
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.primaryBlue,
-                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                    ),
-                    icon: const Icon(Icons.person_add, color: Colors.white),
-                    label: const Text('Crear Usuario', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                  ),
+                  Text(title, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+                  Text(subtitle, style: const TextStyle(color: AppColors.textSecondary)),
                 ],
               ),
               const SizedBox(height: 24),
@@ -606,10 +470,7 @@ class _SuperAdminDashboardState extends ConsumerState<SuperAdminDashboard> {
                     children: [
                       Icon(Icons.people_outline, size: 64, color: AppColors.textSecondary),
                       SizedBox(height: 16),
-                      Text(
-                        'Los usuarios aparecerán aquí',
-                        style: TextStyle(fontSize: 16, color: AppColors.textSecondary),
-                      ),
+                      Text('No hay usuarios en esta categoría', style: TextStyle(fontSize: 16, color: AppColors.textSecondary)),
                     ],
                   ),
                 )
@@ -631,7 +492,7 @@ class _SuperAdminDashboardState extends ConsumerState<SuperAdminDashboard> {
                         DataColumn(label: Text('Email')),
                         DataColumn(label: Text('Rol')),
                         DataColumn(label: Text('Estado')),
-                        DataColumn(label: Text('Acciones')),
+                        DataColumn(label: Text('Desactivar')),
                       ],
                       rows: profiles.map((p) {
                         final userId = p['id'] as String;
@@ -643,23 +504,7 @@ class _SuperAdminDashboardState extends ConsumerState<SuperAdminDashboard> {
                         return DataRow(cells: [
                           DataCell(Text(name, style: const TextStyle(fontWeight: FontWeight.bold))),
                           DataCell(Text(email)),
-                          DataCell(
-                            DropdownButton<String>(
-                              value: role,
-                              underline: const SizedBox(),
-                              items: const [
-                                DropdownMenuItem(value: 'super_admin', child: Text('Super Admin')),
-                                DropdownMenuItem(value: 'admin_dentist', child: Text('Dentista')),
-                                DropdownMenuItem(value: 'admin_secretary', child: Text('Secretaria')),
-                                DropdownMenuItem(value: 'patient', child: Text('Paciente')),
-                              ],
-                              onChanged: (newRole) {
-                                if (newRole != null && newRole != role) {
-                                  _updateUserRole(userId, newRole);
-                                }
-                              },
-                            ),
-                          ),
+                          DataCell(Text(role.toUpperCase(), style: const TextStyle(color: AppColors.primaryBlue))),
                           DataCell(
                             Switch(
                               value: isActive,
@@ -691,12 +536,12 @@ class _SuperAdminDashboardState extends ConsumerState<SuperAdminDashboard> {
     );
   }
 
-  // ──────── Códigos de Invitación ────────
-  Widget _buildInvitationCodesPanel() {
+  // ──────── Pacientes (Familiares) ────────
+  Widget _buildPatientsPanel() {
     return FutureBuilder<List<Map<String, dynamic>>>(
-      future: _fetchInvitationCodes(),
+      future: _fetchPatients(),
       builder: (context, snapshot) {
-        final codes = snapshot.data ?? [];
+        final patients = snapshot.data ?? [];
         final isLoading = snapshot.connectionState == ConnectionState.waiting;
 
         return SingleChildScrollView(
@@ -704,26 +549,11 @@ class _SuperAdminDashboardState extends ConsumerState<SuperAdminDashboard> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              const Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Códigos de Invitación', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-                      Text('Genera IDs para vincular pacientes a la clínica (RF-03)', style: TextStyle(color: AppColors.textSecondary)),
-                    ],
-                  ),
-                  ElevatedButton.icon(
-                    onPressed: _generateCode,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.primaryBlue,
-                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                    ),
-                    icon: const Icon(Icons.add, color: Colors.white),
-                    label: const Text('Generar Código', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                  ),
+                  Text('Directorio de Pacientes', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+                  Text('Familiares y dependientes registrados por los clientes', style: TextStyle(color: AppColors.textSecondary)),
                 ],
               ),
               const SizedBox(height: 24),
@@ -732,7 +562,7 @@ class _SuperAdminDashboardState extends ConsumerState<SuperAdminDashboard> {
                   padding: EdgeInsets.symmetric(vertical: 16),
                   child: Center(child: CircularProgressIndicator()),
                 )
-              else if (codes.isEmpty)
+              else if (patients.isEmpty)
                 Container(
                   width: double.infinity,
                   padding: const EdgeInsets.all(24),
@@ -742,18 +572,9 @@ class _SuperAdminDashboardState extends ConsumerState<SuperAdminDashboard> {
                   ),
                   child: const Column(
                     children: [
-                      Icon(Icons.qr_code, size: 64, color: AppColors.textSecondary),
+                      Icon(Icons.family_restroom, size: 64, color: AppColors.textSecondary),
                       SizedBox(height: 16),
-                      Text(
-                        'Los códigos de invitación aparecerán aquí',
-                        style: TextStyle(fontSize: 16, color: AppColors.textSecondary),
-                      ),
-                      SizedBox(height: 8),
-                      Text(
-                        'Genera un código y entrégaselo al paciente para que pueda vincularse a la clínica desde su app.',
-                        style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
-                        textAlign: TextAlign.center,
-                      ),
+                      Text('No hay pacientes registrados', style: TextStyle(fontSize: 16, color: AppColors.textSecondary)),
                     ],
                   ),
                 )
@@ -771,40 +592,30 @@ class _SuperAdminDashboardState extends ConsumerState<SuperAdminDashboard> {
                     scrollDirection: Axis.horizontal,
                     child: DataTable(
                       columns: const [
-                        DataColumn(label: Text('Código ID')),
-                        DataColumn(label: Text('Creado el')),
-                        DataColumn(label: Text('Estado')),
-                        DataColumn(label: Text('Usado por ID')),
+                        DataColumn(label: Text('Nombre')),
+                        DataColumn(label: Text('Fecha Nac.')),
+                        DataColumn(label: Text('Relación')),
+                        DataColumn(label: Text('Acciones')),
                       ],
-                      rows: codes.map((c) {
-                        final code = c['code'] as String;
-                        final createdAt = c['created_at'] != null 
-                            ? DateTime.parse(c['created_at'] as String).toLocal().toString().substring(0, 16)
-                            : '';
-                        final isUsed = c['is_used'] as bool? ?? false;
-                        final usedBy = c['used_by'] as String? ?? 'N/A';
+                      rows: patients.map((p) {
+                        final name = "${p['first_name']} ${p['last_name']}";
+                        final dob = p['date_of_birth'] as String? ?? 'Desconocida';
+                        final relationship = p['relationship'] as String? ?? 'self';
 
                         return DataRow(cells: [
-                          DataCell(Text(code, style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.primaryBlue, fontSize: 16))),
-                          DataCell(Text(createdAt)),
+                          DataCell(Text(name, style: const TextStyle(fontWeight: FontWeight.bold))),
+                          DataCell(Text(dob)),
+                          DataCell(Text(relationship.toUpperCase(), style: const TextStyle(color: AppColors.primaryBlue))),
                           DataCell(
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: isUsed ? Colors.grey[200] : AppColors.success.withOpacity(0.1),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Text(
-                                isUsed ? 'Usado' : 'Disponible',
-                                style: TextStyle(
-                                  color: isUsed ? Colors.grey : AppColors.success,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 12,
-                                ),
-                              ),
+                            IconButton(
+                              icon: const Icon(Icons.folder_open, color: AppColors.primaryBlue),
+                              onPressed: () {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('Abrir expediente (Próximamente)')),
+                                );
+                              },
                             ),
                           ),
-                          DataCell(Text(usedBy)),
                         ]);
                       }).toList(),
                     ),
@@ -816,6 +627,43 @@ class _SuperAdminDashboardState extends ConsumerState<SuperAdminDashboard> {
       },
     );
   }
+
+  Future<List<Map<String, dynamic>>> _fetchPatients() async {
+    final client = ref.read(supabaseClientProvider);
+    final user = client.auth.currentUser;
+    if (user == null) return [];
+
+    try {
+      final membership = await client
+          .from('clinic_memberships')
+          .select('clinic_id')
+          .eq('user_id', user.id)
+          .eq('is_active', true)
+          .single();
+          
+      final clinicId = membership['clinic_id'];
+      
+      // We fetch all profiles linked to this clinic
+      final clinicMembers = await client
+          .from('clinic_memberships')
+          .select('user_id')
+          .eq('clinic_id', clinicId);
+          
+      final userIds = clinicMembers.map((m) => m['user_id']).toList();
+      
+      if (userIds.isEmpty) return [];
+
+      final patients = await client
+          .from('patients')
+          .select()
+          .inFilter('profile_id', userIds);
+          
+      return List<Map<String, dynamic>>.from(patients);
+    } catch (e) {
+      return [];
+    }
+  }
+
 
   // ──────── Configuración ────────
   Widget _buildSettingsPanel() {
