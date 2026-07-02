@@ -74,17 +74,45 @@ class AppointmentRepository {
             .toList());
   }
 
-  /// Actualiza el estado de una cita (Ej: 'in_treatment')
+  /// Actualiza el estado de una cita y dispara la notificación push al paciente.
+  /// Estados válidos: 'upcoming' | 'in_lobby' | 'in_treatment' | 'completed' | 'cancelled'
   Future<bool> updateAppointmentStatus(String appointmentId, String newStatus) async {
     try {
       await _supabase
           .from('appointments')
           .update({'status': newStatus})
           .eq('id', appointmentId);
+
+      // Disparar notificación push al paciente de forma asíncrona (fire-and-forget).
+      // Si la Edge Function falla, no afecta el flujo principal.
+      _invokeNotification(appointmentId, newStatus);
+
       return true;
     } catch (e) {
-      print('Error al actualizar estado de cita: $e');
+      debugPrint('Error al actualizar estado de cita: $e');
       return false;
+    }
+  }
+
+  /// Llama a la Supabase Edge Function `notify-patient-turn` que envía la push
+  /// notification al dispositivo del paciente vía FCM.
+  Future<void> _invokeNotification(String appointmentId, String newStatus) async {
+    // Solo notificar en estados relevantes para el paciente
+    const notifiableStatuses = {'in_lobby', 'in_treatment', 'completed'};
+    if (!notifiableStatuses.contains(newStatus)) return;
+
+    try {
+      await _supabase.functions.invoke(
+        'notify-patient-turn',
+        body: {
+          'appointmentId': appointmentId,
+          'newStatus': newStatus,
+        },
+      );
+      debugPrint('[Notify] Edge Function invocada para cita $appointmentId → $newStatus');
+    } catch (e) {
+      // Error silencioso: la notificación es opcional, no crítica
+      debugPrint('[Notify] Error al invocar Edge Function: $e');
     }
   }
 }
