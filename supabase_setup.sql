@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS public.clinics (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 ALTER TABLE public.clinics ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Clinicas visibles para autenticados" ON public.clinics;
 CREATE POLICY "Clinicas visibles para autenticados" ON public.clinics
   FOR SELECT TO authenticated USING (true);
 
@@ -42,10 +43,13 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Lectura de perfiles" ON public.profiles;
 CREATE POLICY "Lectura de perfiles" ON public.profiles
   FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Actualización propia" ON public.profiles;
 CREATE POLICY "Actualización propia" ON public.profiles
   FOR UPDATE TO authenticated USING (auth.uid() = id);
+DROP POLICY IF EXISTS "Inserción de perfiles" ON public.profiles;
 CREATE POLICY "Inserción de perfiles" ON public.profiles
   FOR INSERT TO authenticated WITH CHECK (true);
 
@@ -60,10 +64,13 @@ CREATE TABLE IF NOT EXISTS public.patients (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 ALTER TABLE public.patients ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Pacientes visibles para la clínica y el perfil dueño" ON public.patients;
 CREATE POLICY "Pacientes visibles para la clínica y el perfil dueño" ON public.patients
   FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Inserción de pacientes" ON public.patients;
 CREATE POLICY "Inserción de pacientes" ON public.patients
   FOR INSERT TO authenticated WITH CHECK (true);
+DROP POLICY IF EXISTS "Actualización de pacientes" ON public.patients;
 CREATE POLICY "Actualización de pacientes" ON public.patients
   FOR UPDATE TO authenticated USING (true);
 
@@ -78,8 +85,10 @@ CREATE TABLE IF NOT EXISTS public.clinic_memberships (
   UNIQUE(clinic_id, user_id)
 );
 ALTER TABLE public.clinic_memberships ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Miembros ven su clínica" ON public.clinic_memberships;
 CREATE POLICY "Miembros ven su clínica" ON public.clinic_memberships
   FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Inserción de membresías" ON public.clinic_memberships;
 CREATE POLICY "Inserción de membresías" ON public.clinic_memberships
   FOR INSERT TO authenticated WITH CHECK (true);
 
@@ -94,6 +103,7 @@ CREATE TABLE IF NOT EXISTS public.doctors (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 ALTER TABLE public.doctors ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Lectura de doctores" ON public.doctors;
 CREATE POLICY "Lectura de doctores" ON public.doctors
   FOR SELECT TO authenticated USING (true);
 
@@ -107,6 +117,7 @@ CREATE TABLE IF NOT EXISTS public.services (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 ALTER TABLE public.services ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Servicios visibles" ON public.services;
 CREATE POLICY "Servicios visibles" ON public.services
   FOR SELECT TO authenticated USING (true);
 
@@ -126,10 +137,13 @@ CREATE TABLE IF NOT EXISTS public.appointments (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 ALTER TABLE public.appointments ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Lectura de citas" ON public.appointments;
 CREATE POLICY "Lectura de citas" ON public.appointments
   FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Inserción de citas" ON public.appointments;
 CREATE POLICY "Inserción de citas" ON public.appointments
   FOR INSERT TO authenticated WITH CHECK (true);
+DROP POLICY IF EXISTS "Actualización de citas" ON public.appointments;
 CREATE POLICY "Actualización de citas" ON public.appointments
   FOR UPDATE TO authenticated USING (true);
 
@@ -145,10 +159,13 @@ CREATE TABLE IF NOT EXISTS public.invitation_codes (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 ALTER TABLE public.invitation_codes ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Lectura de códigos" ON public.invitation_codes;
 CREATE POLICY "Lectura de códigos" ON public.invitation_codes
   FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Inserción de códigos" ON public.invitation_codes;
 CREATE POLICY "Inserción de códigos" ON public.invitation_codes
   FOR INSERT TO authenticated WITH CHECK (true);
+DROP POLICY IF EXISTS "Actualización de códigos" ON public.invitation_codes;
 CREATE POLICY "Actualización de códigos" ON public.invitation_codes
   FOR UPDATE TO authenticated USING (true);
 
@@ -162,8 +179,10 @@ CREATE TABLE IF NOT EXISTS public.linked_devices (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 ALTER TABLE public.linked_devices ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Dispositivos propios" ON public.linked_devices;
 CREATE POLICY "Dispositivos propios" ON public.linked_devices
   FOR SELECT TO authenticated USING (user_id = auth.uid());
+DROP POLICY IF EXISTS "Registrar dispositivos" ON public.linked_devices;
 CREATE POLICY "Registrar dispositivos" ON public.linked_devices
   FOR INSERT TO authenticated WITH CHECK (user_id = auth.uid());
 
