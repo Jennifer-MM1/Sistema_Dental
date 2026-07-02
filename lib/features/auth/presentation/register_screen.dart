@@ -4,14 +4,15 @@ import 'package:go_router/go_router.dart';
 import 'package:sistema_dental/core/theme/app_colors.dart';
 import 'package:sistema_dental/features/auth/providers/auth_providers.dart';
 
-class LoginScreen extends ConsumerStatefulWidget {
-  const LoginScreen({super.key});
+class RegisterScreen extends ConsumerStatefulWidget {
+  const RegisterScreen({super.key});
 
   @override
-  ConsumerState<LoginScreen> createState() => _LoginScreenState();
+  ConsumerState<RegisterScreen> createState() => _RegisterScreenState();
 }
 
-class _LoginScreenState extends ConsumerState<LoginScreen> {
+class _RegisterScreenState extends ConsumerState<RegisterScreen> {
+  final _nameController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
@@ -19,22 +20,24 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   @override
   void dispose() {
+    _nameController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
   }
 
-  Future<void> _handleLogin() async {
+  Future<void> _handleRegister() async {
     if (!_formKey.currentState!.validate()) return;
 
     final loginNotifier = ref.read(loginProvider.notifier);
-    final user = await loginNotifier.login(
+    final user = await loginNotifier.register(
+      _nameController.text.trim(),
       _emailController.text.trim(),
       _passwordController.text,
     );
 
     if (user != null && mounted) {
-      // Redirigir al Hub de Selección de Roles
+      // Si se registró con éxito, ir al hub de selección de rol
       context.go('/mode_selector');
     }
   }
@@ -75,7 +78,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       borderRadius: BorderRadius.circular(16),
                     ),
                     child: const Icon(
-                      Icons.medical_services,
+                      Icons.person_add_outlined,
                       size: 40,
                       color: AppColors.primaryBlue,
                     ),
@@ -84,7 +87,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
                   // Título
                   const Text(
-                    'DentalSync Connect',
+                    'Crear Cuenta',
                     style: TextStyle(
                       fontSize: 26,
                       fontWeight: FontWeight.bold,
@@ -93,13 +96,44 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   ),
                   const SizedBox(height: 6),
                   const Text(
-                    'Gestión clínica inteligente y profesional',
+                    'Únete a DentalSync para gestionar tu clínica o tus citas',
+                    textAlign: TextAlign.center,
                     style: TextStyle(
                       color: AppColors.textSecondary,
                       fontSize: 14,
                     ),
                   ),
                   const SizedBox(height: 36),
+
+                  // Campo Nombre
+                  TextFormField(
+                    controller: _nameController,
+                    keyboardType: TextInputType.name,
+                    textInputAction: TextInputAction.next,
+                    decoration: InputDecoration(
+                      labelText: 'Nombre completo',
+                      hintText: 'Ej. Juan Pérez',
+                      prefixIcon: const Icon(Icons.person_outline, color: AppColors.primaryBlue),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: Colors.grey.shade300),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: AppColors.primaryBlue, width: 2),
+                      ),
+                      filled: true,
+                      fillColor: Colors.grey.shade50,
+                    ),
+                    validator: (value) {
+                      if (value == null || value.trim().isEmpty) {
+                        return 'Ingresa tu nombre completo';
+                      }
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 18),
 
                   // Campo Email
                   TextFormField(
@@ -110,9 +144,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       labelText: 'Correo electrónico',
                       hintText: 'ejemplo@clinica.com',
                       prefixIcon: const Icon(Icons.email_outlined, color: AppColors.primaryBlue),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
                         borderSide: BorderSide(color: Colors.grey.shade300),
@@ -141,7 +173,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     controller: _passwordController,
                     obscureText: _obscurePassword,
                     textInputAction: TextInputAction.done,
-                    onFieldSubmitted: (_) => _handleLogin(),
+                    onFieldSubmitted: (_) => _handleRegister(),
                     decoration: InputDecoration(
                       labelText: 'Contraseña',
                       hintText: '••••••••',
@@ -157,9 +189,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           });
                         },
                       ),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
                         borderSide: BorderSide(color: Colors.grey.shade300),
@@ -209,15 +239,41 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         ],
                       ),
                     ),
-
+                  // Mensaje de éxito
+                  if (loginState.successMessage != null)
+                    Container(
+                      width: double.infinity,
+                      margin: const EdgeInsets.only(top: 12),
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.green.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: Colors.green.withValues(alpha: 0.3)),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.check_circle_outline, color: Colors.green, size: 20),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              loginState.successMessage!,
+                              style: const TextStyle(
+                                color: Colors.green,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   const SizedBox(height: 24),
 
-                  // Botón de Login
+                  // Botón de Registro
                   SizedBox(
                     width: double.infinity,
                     height: 52,
                     child: ElevatedButton(
-                      onPressed: loginState.isLoading ? null : _handleLogin,
+                      onPressed: loginState.isLoading ? null : _handleRegister,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppColors.primaryBlue,
                         foregroundColor: Colors.white,
@@ -236,7 +292,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                               ),
                             )
                           : const Text(
-                              'Iniciar Sesión',
+                              'Crear Cuenta',
                               style: TextStyle(
                                 fontSize: 16,
                                 fontWeight: FontWeight.bold,
@@ -253,7 +309,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 12),
                         child: Text(
-                          '¿No tienes cuenta?',
+                          '¿Ya tienes cuenta?',
                           style: TextStyle(
                             color: Colors.grey.shade500,
                             fontSize: 12,
@@ -265,29 +321,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   ),
                   const SizedBox(height: 16),
 
-                  // Ir a Registro
+                  // Ir a Login
                   TextButton(
-                    onPressed: () => context.go('/register'),
+                    onPressed: () => context.go('/login'),
                     child: const Text(
-                      'Crear Cuenta',
+                      'Iniciar Sesión',
                       style: TextStyle(color: AppColors.primaryBlue, fontWeight: FontWeight.bold),
                     ),
-                  ),
-
-                  // Info de seguridad
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.shield_outlined, size: 16, color: Colors.grey.shade500),
-                      const SizedBox(width: 6),
-                      Text(
-                        'Conexión protegida con Supabase',
-                        style: TextStyle(
-                          color: Colors.grey.shade500,
-                          fontSize: 12,
-                        ),
-                      ),
-                    ],
                   ),
                 ],
               ),

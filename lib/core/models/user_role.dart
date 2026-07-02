@@ -1,20 +1,20 @@
 /// Enum que define los 4 roles del sistema DentalSync Connect.
 /// Cada rol determina a qué panel(es) tiene acceso el usuario.
 enum UserRole {
-  superAdmin,     // Acceso a panel dentista + secretaria
-  adminDentist,   // Acceso a panel dentista (tablet)
-  adminSecretary, // Acceso a panel secretaria (escritorio)
-  client;         // Acceso a panel cliente (móvil + smartwatch)
+  dentist,     // Acceso a panel dentista (ahora actúa como admin/owner)
+  secretary, // Acceso a panel secretaria
+  client;         // Acceso a panel cliente
 
   /// Convierte la cadena almacenada en Supabase al enum correspondiente.
   static UserRole fromString(String role) {
     switch (role) {
-      case 'super_admin':
-        return UserRole.superAdmin;
+      case 'dentist':
+      case 'super_admin': // Compatibilidad hacia atrás si hay roles viejos
       case 'admin_dentist':
-        return UserRole.adminDentist;
+        return UserRole.dentist;
+      case 'secretary':
       case 'admin_secretary':
-        return UserRole.adminSecretary;
+        return UserRole.secretary;
       case 'client':
         return UserRole.client;
       default:
@@ -25,12 +25,10 @@ enum UserRole {
   /// Convierte el enum a la cadena almacenada en Supabase.
   String toDbString() {
     switch (this) {
-      case UserRole.superAdmin:
-        return 'super_admin';
-      case UserRole.adminDentist:
-        return 'admin_dentist';
-      case UserRole.adminSecretary:
-        return 'admin_secretary';
+      case UserRole.dentist:
+        return 'dentist';
+      case UserRole.secretary:
+        return 'secretary';
       case UserRole.client:
         return 'client';
     }
@@ -39,11 +37,9 @@ enum UserRole {
   /// Ruta inicial de GoRouter según el rol del usuario autenticado.
   String get initialRoute {
     switch (this) {
-      case UserRole.superAdmin:
-        return '/super-admin';
-      case UserRole.adminDentist:
+      case UserRole.dentist:
         return '/dentist';
-      case UserRole.adminSecretary:
+      case UserRole.secretary:
         return '/secretary';
       case UserRole.client:
         return '/client';
@@ -53,11 +49,9 @@ enum UserRole {
   /// Nombre legible para mostrar en la UI.
   String get displayName {
     switch (this) {
-      case UserRole.superAdmin:
-        return 'Super Administrador';
-      case UserRole.adminDentist:
+      case UserRole.dentist:
         return 'Dentista';
-      case UserRole.adminSecretary:
+      case UserRole.secretary:
         return 'Secretaria';
       case UserRole.client:
         return 'Cliente';
@@ -67,11 +61,9 @@ enum UserRole {
   /// Verifica si el rol tiene acceso a una ruta específica.
   bool canAccessRoute(String route) {
     switch (this) {
-      case UserRole.superAdmin:
-        return true; // Acceso total
-      case UserRole.adminDentist:
-        return route.startsWith('/dentist');
-      case UserRole.adminSecretary:
+      case UserRole.dentist:
+        return true; // El dentista es super admin ahora
+      case UserRole.secretary:
         return route.startsWith('/secretary');
       case UserRole.client:
         return route.startsWith('/client') || route.startsWith('/link-clinic');

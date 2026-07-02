@@ -37,7 +37,7 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   phone TEXT,
   avatar_url TEXT,
   role TEXT NOT NULL DEFAULT 'client'
-    CHECK (role IN ('super_admin', 'admin_dentist', 'admin_secretary', 'client')),
+    CHECK (role IN ('dentist', 'secretary', 'client')),
   is_active BOOLEAN DEFAULT true,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -194,6 +194,15 @@ BEGIN
     );
   END IF;
 
+  -- Si es dentista, crear automáticamente su clínica y asignarlo como owner
+  IF COALESCE(new.raw_user_meta_data->>'role', 'client') = 'dentist' THEN
+    INSERT INTO public.clinics (id, business_name)
+    VALUES (new.id, 'Clínica de ' || COALESCE(new.raw_user_meta_data->>'name', 'Nuevo Dentista'));
+    
+    INSERT INTO public.clinic_memberships (clinic_id, user_id, role_in_clinic)
+    VALUES (new.id, new.id, 'owner');
+  END IF;
+
   RETURN new;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
@@ -219,158 +228,3 @@ BEGIN
   END IF;
 END $$;
 
--- ============================================================
--- PASO 4: CREAR USUARIOS DE PRUEBA
--- ============================================================
--- Contraseña para TODOS los usuarios de prueba: Dental2026!
--- ============================================================
-
--- Usuario 1: Super Administrador
-INSERT INTO auth.users (
-  instance_id, id, aud, role, email, encrypted_password,
-  email_confirmed_at, raw_app_meta_data, raw_user_meta_data,
-  created_at, updated_at, confirmation_token, recovery_token,
-  email_change, email_change_token_new, email_change_token_current,
-  phone_change_token, reauthentication_token
-) VALUES (
-  '00000000-0000-0000-0000-000000000000',
-  gen_random_uuid(), 'authenticated', 'authenticated',
-  'superadmin@dentalsync.com',
-  crypt('Dental2026!', gen_salt('bf')),
-  NOW(),
-  '{"provider": "email", "providers": ["email"]}'::jsonb,
-  '{"name": "Admin General", "role": "super_admin"}'::jsonb,
-  NOW(), NOW(), '', '', '', '', '', '', ''
-);
-
--- Usuario 2: Admin Dentista
-INSERT INTO auth.users (
-  instance_id, id, aud, role, email, encrypted_password,
-  email_confirmed_at, raw_app_meta_data, raw_user_meta_data,
-  created_at, updated_at, confirmation_token, recovery_token,
-  email_change, email_change_token_new, email_change_token_current,
-  phone_change_token, reauthentication_token
-) VALUES (
-  '00000000-0000-0000-0000-000000000000',
-  gen_random_uuid(), 'authenticated', 'authenticated',
-  'dentista@dentalsync.com',
-  crypt('Dental2026!', gen_salt('bf')),
-  NOW(),
-  '{"provider": "email", "providers": ["email"]}'::jsonb,
-  '{"name": "Dra. Elena Martínez", "role": "admin_dentist"}'::jsonb,
-  NOW(), NOW(), '', '', '', '', '', '', ''
-);
-
--- Usuario 3: Admin Secretaria
-INSERT INTO auth.users (
-  instance_id, id, aud, role, email, encrypted_password,
-  email_confirmed_at, raw_app_meta_data, raw_user_meta_data,
-  created_at, updated_at, confirmation_token, recovery_token,
-  email_change, email_change_token_new, email_change_token_current,
-  phone_change_token, reauthentication_token
-) VALUES (
-  '00000000-0000-0000-0000-000000000000',
-  gen_random_uuid(), 'authenticated', 'authenticated',
-  'secretaria@dentalsync.com',
-  crypt('Dental2026!', gen_salt('bf')),
-  NOW(),
-  '{"provider": "email", "providers": ["email"]}'::jsonb,
-  '{"name": "Ana López", "role": "admin_secretary"}'::jsonb,
-  NOW(), NOW(), '', '', '', '', '', '', ''
-);
-
--- Usuario 4: Cliente
-INSERT INTO auth.users (
-  instance_id, id, aud, role, email, encrypted_password,
-  email_confirmed_at, raw_app_meta_data, raw_user_meta_data,
-  created_at, updated_at, confirmation_token, recovery_token,
-  email_change, email_change_token_new, email_change_token_current,
-  phone_change_token, reauthentication_token
-) VALUES (
-  '00000000-0000-0000-0000-000000000000',
-  gen_random_uuid(), 'authenticated', 'authenticated',
-  'cliente@dentalsync.com',
-  crypt('Dental2026!', gen_salt('bf')),
-  NOW(),
-  '{"provider": "email", "providers": ["email"]}'::jsonb,
-  '{"name": "Carlos Mendoza", "role": "client"}'::jsonb,
-  NOW(), NOW(), '', '', '', '', '', '', ''
-);
-
--- ============================================================
--- PASO 5: CREAR CLÍNICA DE PRUEBA Y VINCULAR USUARIOS
--- ============================================================
-
--- Crear clínica
-INSERT INTO public.clinics (id, business_name, sanitary_license, professional_id, gps_latitude, gps_longitude, geofence_radius)
-VALUES (
-  'a0000000-0000-0000-0000-000000000001',
-  'DentalSync Connect - Clínica Central',
-  'LIC-SANIT-2026-001',
-  'CED-PROF-12345',
-  21.2167,  -- Jalpan de Serra, Qro. (latitud)
-  -99.4722, -- Jalpan de Serra, Qro. (longitud)
-  150       -- Radio geocerca en metros
-);
-
--- Vincular usuarios a la clínica
--- (El trigger ya creó los perfiles, ahora vinculamos con la clínica)
-INSERT INTO public.clinic_memberships (clinic_id, user_id, role_in_clinic)
-SELECT 'a0000000-0000-0000-0000-000000000001', id, 'owner'
-FROM public.profiles WHERE email = 'superadmin@dentalsync.com';
-
-INSERT INTO public.clinic_memberships (clinic_id, user_id, role_in_clinic)
-SELECT 'a0000000-0000-0000-0000-000000000001', id, 'dentist'
-FROM public.profiles WHERE email = 'dentista@dentalsync.com';
-
-INSERT INTO public.clinic_memberships (clinic_id, user_id, role_in_clinic)
-SELECT 'a0000000-0000-0000-0000-000000000001', id, 'secretary'
-FROM public.profiles WHERE email = 'secretaria@dentalsync.com';
-
-INSERT INTO public.clinic_memberships (clinic_id, user_id, role_in_clinic)
-SELECT 'a0000000-0000-0000-0000-000000000001', id, 'client'
-FROM public.profiles WHERE email = 'cliente@dentalsync.com';
-
--- Crear registro de doctor para la dentista
-INSERT INTO public.doctors (user_id, clinic_id, specialty, cabin_assigned)
-SELECT id, 'a0000000-0000-0000-0000-000000000001', 'Ortodoncia', 'Consultorio 1'
-FROM public.profiles WHERE email = 'dentista@dentalsync.com';
-
--- Crear servicios de ejemplo para la clínica
-INSERT INTO public.services (clinic_id, service_name, price, duration_mins) VALUES
-  ('a0000000-0000-0000-0000-000000000001', 'Limpieza Dental', 80.00, 30),
-  ('a0000000-0000-0000-0000-000000000001', 'Chequeo General', 60.00, 20),
-  ('a0000000-0000-0000-0000-000000000001', 'Blanqueamiento', 250.00, 60),
-  ('a0000000-0000-0000-0000-000000000001', 'Ortodoncia', 120.00, 45),
-  ('a0000000-0000-0000-0000-000000000001', 'Extracción', 150.00, 40);
--- ============================================================
--- PASO 6: CREAR CITAS DE PRUEBA
--- ============================================================
-
--- Variables
-DO \$\$
-DECLARE
-  v_clinic_id UUID := 'a0000000-0000-0000-0000-000000000001';
-  v_client_id UUID;
-  v_patient_id UUID;
-  v_doctor_id UUID;
-  v_service_1_id UUID;
-  v_service_2_id UUID;
-BEGIN
-  -- Get IDs
-  SELECT id INTO v_client_id FROM public.profiles WHERE email = 'cliente@dentalsync.com' LIMIT 1;
-  SELECT id INTO v_patient_id FROM public.patients WHERE profile_id = v_client_id LIMIT 1;
-  SELECT id INTO v_doctor_id FROM public.doctors LIMIT 1;
-  SELECT id INTO v_service_1_id FROM public.services WHERE service_name = 'Limpieza Dental' LIMIT 1;
-  SELECT id INTO v_service_2_id FROM public.services WHERE service_name = 'Ortodoncia' LIMIT 1;
-
-  IF v_patient_id IS NOT NULL AND v_doctor_id IS NOT NULL THEN
-    -- Insert appointment 1: Upcoming
-    INSERT INTO public.appointments (clinic_id, patient_id, doctor_id, service_id, date_time, status, queue_code)
-    VALUES (v_clinic_id, v_patient_id, v_doctor_id, v_service_1_id, NOW() + INTERVAL '1 day', 'upcoming', 'C-100');
-
-    -- Insert appointment 2: In Lobby (Queue test)
-    INSERT INTO public.appointments (clinic_id, patient_id, doctor_id, service_id, date_time, status, queue_code)
-    VALUES (v_clinic_id, v_patient_id, v_doctor_id, v_service_2_id, NOW(), 'in_lobby', 'D-129');
-  END IF;
-END \$\$

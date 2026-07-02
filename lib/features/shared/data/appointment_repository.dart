@@ -68,7 +68,7 @@ class AppointmentRepository {
         .stream(primaryKey: ['id'])
         .eq('clinic_id', clinicId)
         .order('date_time', ascending: true)
-        .map((list) => list
+        .map<List<Appointment>>((List<Map<String, dynamic>> list) => list
             .map((map) => Appointment.fromMap(map))
             .where((app) => app.status != 'completed' && app.status != 'cancelled')
             .toList());

@@ -20,6 +20,22 @@ class AuthRepository {
     );
   }
 
+  /// Registra un usuario nuevo.
+  Future<AuthResponse> signUpWithEmail({
+    required String email,
+    required String password,
+    required String name,
+  }) async {
+    return await _client.auth.signUp(
+      email: email,
+      password: password,
+      data: {
+        'name': name,
+        'role': 'client', // Siempre inicia como client por defecto, luego elige
+      },
+    );
+  }
+
   /// Cierra la sesión del usuario actual.
   Future<void> signOut() async {
     await _client.auth.signOut();
@@ -56,8 +72,8 @@ class AuthRepository {
   bool get isAuthenticated => _client.auth.currentUser != null;
 
   /// Vincula un usuario a una clínica usando un código de invitación.
-  /// Lee el rol del usuario de su perfil y lo asigna a la clínica.
-  Future<String?> linkClinicWithCode(String code) async {
+  /// Asigna al usuario el rol elegido en la clínica.
+  Future<String?> linkClinicWithCode(String code, String role) async {
     final user = _client.auth.currentUser;
     if (user == null) return null;
 
@@ -69,15 +85,6 @@ class AuthRepository {
           .eq('code', code)
           .eq('is_used', false)
           .single();
-
-      // Obtener el rol del usuario desde su perfil
-      final profile = await _client
-          .from('profiles')
-          .select('role')
-          .eq('id', user.id)
-          .single();
-          
-      final role = profile['role'] as String;
 
       // Marcar el código como usado
       await _client

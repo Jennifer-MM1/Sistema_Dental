@@ -5,7 +5,8 @@ import 'package:sistema_dental/core/theme/app_colors.dart';
 import 'package:sistema_dental/features/auth/providers/auth_providers.dart';
 
 class LinkClinicScreen extends ConsumerStatefulWidget {
-  const LinkClinicScreen({super.key});
+  final String role;
+  const LinkClinicScreen({super.key, required this.role});
 
   @override
   ConsumerState<LinkClinicScreen> createState() => _LinkClinicScreenState();
@@ -32,14 +33,14 @@ class _LinkClinicScreenState extends ConsumerState<LinkClinicScreen> {
     });
 
     final authRepo = ref.read(authRepositoryProvider);
-    final role = await authRepo.linkClinicWithCode(code);
+    final linkedRole = await authRepo.linkClinicWithCode(code, widget.role);
 
     if (!mounted) return;
     setState(() {
       _isLinking = false;
     });
 
-    if (role != null) {
+    if (linkedRole != null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('¡Clínica vinculada con éxito!'),
@@ -48,12 +49,12 @@ class _LinkClinicScreenState extends ConsumerState<LinkClinicScreen> {
       );
 
       // Redirigir al panel correspondiente según el rol
-      if (role == 'super_admin' || role == 'admin_dentist') {
-        context.go('/super_admin');
-      } else if (role == 'admin_secretary') {
+      if (linkedRole == 'owner' || linkedRole == 'dentist') {
+        context.go('/dentist');
+      } else if (linkedRole == 'secretary') {
         context.go('/secretary');
       } else {
-        context.go('/patient');
+        context.go('/client');
       }
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -138,9 +139,12 @@ class _LinkClinicScreenState extends ConsumerState<LinkClinicScreen> {
                         onTap: () {
                           setState(() => _isScanning = true);
                           Future.delayed(const Duration(seconds: 2), () {
-                            if (mounted) setState(() => _isScanning = false);
-                            // Simular escaneo exitoso
-                            _codeController.text = 'DENT-123456';
+                            if (mounted) {
+                              setState(() => _isScanning = false);
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Simulación: Cámara no disponible en esta plataforma. Ingresa el código manualmente.')),
+                              );
+                            }
                           });
                         },
                         child: Column(

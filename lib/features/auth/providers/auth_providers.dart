@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:sistema_dental/core/models/app_user.dart';
+import 'package:sistema_dental/core/models/user_role.dart';
 import 'package:sistema_dental/core/supabase/supabase_provider.dart';
 import 'package:sistema_dental/features/auth/data/auth_repository.dart';
 
@@ -30,22 +31,26 @@ final currentUserProvider = FutureProvider<AppUser?>((ref) async {
 class LoginState {
   final bool isLoading;
   final String? errorMessage;
+  final String? successMessage;
   final AppUser? user;
 
   const LoginState({
     this.isLoading = false,
     this.errorMessage,
+    this.successMessage,
     this.user,
   });
 
   LoginState copyWith({
     bool? isLoading,
     String? errorMessage,
+    String? successMessage,
     AppUser? user,
   }) {
     return LoginState(
       isLoading: isLoading ?? this.isLoading,
       errorMessage: errorMessage,
+      successMessage: successMessage,
       user: user ?? this.user,
     );
   }
@@ -100,6 +105,65 @@ class LoginNotifier extends Notifier<LoginState> {
     }
   }
 
+  /// Registra un nuevo usuario con email, contraseña y nombre.
+  Future<AppUser?> register(String name, String email, String password) async {
+    state = state.copyWith(isLoading: true, errorMessage: null);
+
+    try {
+      final repo = ref.read(authRepositoryProvider);
+      final response = await repo.signUpWithEmail(
+        name: name,
+        email: email,
+        password: password,
+      );
+
+      final user = response.user;
+      if (user == null) {
+        state = state.copyWith(
+          isLoading: false,
+          errorMessage: 'No se pudo crear la cuenta.',
+        );
+        return null;
+      }
+
+      // Si el registro fue exitoso pero no hay sesión, significa que se requiere confirmación por correo
+      if (response.session == null) {
+        state = state.copyWith(
+          isLoading: false,
+          successMessage: 'Cuenta creada exitosamente. Por favor revisa tu correo electrónico para verificar tu cuenta antes de iniciar sesión.',
+        );
+        return null; // Retornamos null para que no intente redirigir al hub todavía
+      }
+
+      final appUser = AppUser(
+        id: user.id,
+        email: user.email ?? '',
+        name: name,
+        createdAt: DateTime.now(),
+        role: UserRole.client, // Will be overridden dynamically by the Hub
+      );
+
+      state = state.copyWith(
+        isLoading: false,
+        user: appUser,
+      );
+      return appUser;
+
+    } on AuthException catch (e) {
+      state = state.copyWith(
+        isLoading: false,
+        errorMessage: _translateAuthError(e.message),
+      );
+      return null;
+    } catch (e) {
+      state = state.copyWith(
+        isLoading: false,
+        errorMessage: 'Error de conexión. Intenta de nuevo.',
+      );
+      return null;
+    }
+  }
+
   /// Cierra la sesión del usuario.
   Future<void> logout() async {
     final repo = ref.read(authRepositoryProvider);
@@ -107,13 +171,13 @@ class LoginNotifier extends Notifier<LoginState> {
     state = const LoginState();
   }
 
-  /// Vincula al paciente con una clínica usando el código de invitación.
-  Future<bool> linkWithCode(String code) async {
+  /// Vincula al usuario con una clínica usando el código de invitación y un rol específico.
+  Future<bool> linkWithCode(String code, String role) async {
     state = state.copyWith(isLoading: true, errorMessage: null);
 
     final repo = ref.read(authRepositoryProvider);
-    final role = await repo.linkClinicWithCode(code);
-    final success = role != null;
+    final roleResult = await repo.linkClinicWithCode(code, role);
+    final success = roleResult != null;
 
     if (!success) {
       state = state.copyWith(

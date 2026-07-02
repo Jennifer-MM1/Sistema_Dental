@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sistema_dental/core/theme/app_colors.dart';
 import 'package:go_router/go_router.dart';
@@ -45,10 +46,42 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
             )
           else
             Padding(
-              padding: const EdgeInsets.only(right: 16.0),
-              child: CircleAvatar(
-                backgroundColor: AppColors.secondaryBlue,
-                child: const Icon(Icons.person, color: Colors.white),
+              padding: const EdgeInsets.only(right: 8.0),
+              child: PopupMenuButton<String>(
+                icon: const CircleAvatar(
+                  backgroundColor: AppColors.secondaryBlue,
+                  child: Icon(Icons.person, color: Colors.white),
+                ),
+                onSelected: (value) async {
+                  if (value == 'mode') {
+                    context.go('/mode_selector');
+                  } else if (value == 'logout') {
+                    await ref.read(loginProvider.notifier).logout();
+                    if (context.mounted) context.go('/login');
+                  }
+                },
+                itemBuilder: (context) => [
+                  const PopupMenuItem(
+                    value: 'mode',
+                    child: Row(
+                      children: [
+                        Icon(Icons.swap_horiz, color: AppColors.textPrimary),
+                        SizedBox(width: 8),
+                        Text('Cambiar Modo'),
+                      ],
+                    ),
+                  ),
+                  const PopupMenuItem(
+                    value: 'logout',
+                    child: Row(
+                      children: [
+                        Icon(Icons.logout, color: AppColors.error),
+                        SizedBox(width: 8),
+                        Text('Cerrar Sesión', style: TextStyle(color: AppColors.error)),
+                      ],
+                    ),
+                  ),
+                ],
               ),
             ),
         ],
@@ -76,165 +109,16 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
   }
 
   Widget _buildBody() {
-    final userAsync = ref.watch(currentUserProvider);
-    final userName = userAsync.value?.name ?? 'Paciente';
-
     if (_selectedIndex == 1) {
       return const ClientScheduleView();
+    } else if (_selectedIndex == 2) {
+      return const ClientRecordsView();
     } else if (_selectedIndex == 3) {
       return const ClientProfileView();
     }
     
     // Vista Home
-    final selectedPatient = ref.watch(selectedPatientProvider);
-    final displayFirstName = selectedPatient?.firstName ?? userName.split(' ').first;
-
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(20.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const PatientSelector(),
-          Text(
-            '¡Hola, $displayFirstName!',
-            style: const TextStyle(
-              fontSize: 32,
-              fontWeight: FontWeight.bold,
-              color: AppColors.primaryBlue,
-            ),
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            'Tu salud dental es nuestra prioridad hoy.',
-            style: TextStyle(
-              fontSize: 16,
-              color: AppColors.textSecondary,
-            ),
-          ),
-          const SizedBox(height: 24),
-          
-          // Tarjeta de Próxima Cita
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: AppColors.primaryBlue,
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.2),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: const Text('PRÓXIMA CITA', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
-                        ),
-                        const SizedBox(width: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Row(
-                            children: const [
-                              Icon(Icons.circle, color: AppColors.success, size: 10),
-                              SizedBox(width: 4),
-                              Text('EN SALA DE ESPERA', style: TextStyle(color: AppColors.success, fontSize: 12, fontWeight: FontWeight.bold)),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: const Icon(Icons.calendar_month, color: Colors.white, size: 20),
-                    )
-                  ],
-                ),
-                const SizedBox(height: 20),
-                const Text('Limpieza General', style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 4),
-                const Text('Dr. Roberto Valenzuela', style: TextStyle(color: Colors.white, fontSize: 16)),
-                const SizedBox(height: 20),
-                Row(
-                  children: const [
-                    Icon(Icons.calendar_today, color: Colors.white, size: 16),
-                    SizedBox(width: 8),
-                    Text('14 Oct, 2023', style: TextStyle(color: Colors.white)),
-                    SizedBox(width: 16),
-                    Icon(Icons.access_time, color: Colors.white, size: 16),
-                    SizedBox(width: 8),
-                    Text('10:30 AM', style: TextStyle(color: Colors.white)),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          
-          const SizedBox(height: 24),
-          
-          // Grid de Acciones (Reemplazado Pagos por Tratamientos)
-          Row(
-            children: [
-              Expanded(
-                child: _buildActionCard(
-                  icon: Icons.folder_open,
-                  title: 'Mis Registros',
-                  subtitle: 'Ver historial clínico',
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: _buildActionCard(
-                  icon: Icons.medical_information,
-                  title: 'Mis Tratamientos',
-                  subtitle: 'Planes activos',
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          _buildFullWidthCard(
-            icon: Icons.chat_bubble_outline,
-            title: 'Contactar Clínica',
-          ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(
-                child: _buildStatCard(
-                  title: 'Salud Bucal',
-                  subtitle: 'Progreso de Tratamiento',
-                  value: '75%',
-                  color: AppColors.primaryBlue,
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: _buildStatCard(
-                  title: 'Alertas',
-                  subtitle: 'Revisión pendiente',
-                  icon: Icons.notifications_active,
-                  color: AppColors.warning,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
+    return const ClientHomeView();
   }
 
   Widget _buildActionCard({required IconData icon, required String title, required String subtitle}) {
@@ -265,84 +149,270 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
       ),
     );
   }
+}
 
-  Widget _buildFullWidthCard({required IconData icon, required String title}) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4)),
-        ],
-      ),
-      child: Row(
+// ----------------------------------------------------
+// Vista: Home
+// ----------------------------------------------------
+class ClientHomeView extends ConsumerStatefulWidget {
+  const ClientHomeView({super.key});
+
+  @override
+  ConsumerState<ClientHomeView> createState() => _ClientHomeViewState();
+}
+
+class _ClientHomeViewState extends ConsumerState<ClientHomeView> {
+  Map<String, dynamic>? _nextAppointment;
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchNextAppointment();
+  }
+
+  Future<void> _fetchNextAppointment() async {
+    final client = Supabase.instance.client;
+    final user = client.auth.currentUser;
+    if (user == null) return;
+
+    try {
+      final patientRes = await client.from('patients').select('id').eq('profile_id', user.id).limit(1);
+      if (patientRes.isEmpty) {
+        setState(() => _isLoading = false);
+        return;
+      }
+
+      final patientId = patientRes[0]['id'];
+
+      final apptRes = await client
+          .from('appointments')
+          .select('*, doctors(profiles(name)), services(service_name)')
+          .eq('patient_id', patientId)
+          .gte('date_time', DateTime.now().toUtc().toIso8601String())
+          .order('date_time', ascending: true)
+          .limit(1);
+
+      if (apptRes.isNotEmpty) {
+        _nextAppointment = apptRes[0];
+      }
+    } catch (e) {
+      debugPrint('Error fetching next appointment: $e');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final userAsync = ref.watch(currentUserProvider);
+    final userName = userAsync.value?.name ?? 'Paciente';
+    final selectedPatient = ref.watch(selectedPatientProvider);
+    final displayFirstName = selectedPatient?.firstName ?? userName.split(' ').first;
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(20.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: AppColors.background,
-              borderRadius: BorderRadius.circular(12),
+          const PatientSelector(),
+          Text(
+            '¡Hola, $displayFirstName!',
+            style: const TextStyle(
+              fontSize: 32,
+              fontWeight: FontWeight.bold,
+              color: AppColors.primaryBlue,
             ),
-            child: Icon(icon, color: Colors.grey[700]),
           ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+          const SizedBox(height: 8),
+          const Text(
+            'Tu salud dental es nuestra prioridad hoy.',
+            style: TextStyle(
+              fontSize: 16,
+              color: AppColors.textSecondary,
+            ),
           ),
-          const Icon(Icons.arrow_forward_ios, color: Colors.grey, size: 16),
+          const SizedBox(height: 24),
+          
+          if (_isLoading)
+            const Center(child: CircularProgressIndicator())
+          else if (_nextAppointment != null)
+            _buildNextAppointmentCard(_nextAppointment!)
+          else
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: Colors.grey.shade200),
+              ),
+              child: const Center(
+                child: Text('No tienes citas próximas.', style: TextStyle(color: Colors.grey)),
+              ),
+            ),
+          
+          const SizedBox(height: 24),
         ],
       ),
     );
   }
 
-  Widget _buildStatCard({required String title, required String subtitle, String? value, IconData? icon, required Color color}) {
+  Widget _buildNextAppointmentCard(Map<String, dynamic> appt) {
+    final date = DateTime.parse(appt['date_time']).toLocal();
+    final dateStr = DateFormat('dd MMM, yyyy').format(date);
+    final timeStr = DateFormat('hh:mm a').format(date);
+    final doctorName = appt['doctors']?['profiles']?['name'] ?? 'Doctor';
+    final serviceName = appt['services']?['service_name'] ?? 'Consulta General';
+
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4)),
-        ],
+        color: AppColors.primaryBlue,
+        borderRadius: BorderRadius.circular(20),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 50,
-            height: 50,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(color: color, width: 3),
-            ),
-            child: Center(
-              child: value != null 
-                  ? Text(value, style: TextStyle(color: color, fontWeight: FontWeight.bold))
-                  : Icon(icon, color: color),
-            ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Text('PRÓXIMA CITA', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+              ),
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.calendar_month, color: Colors.white, size: 20),
+              )
+            ],
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                Text(subtitle, style: const TextStyle(color: Colors.grey, fontSize: 11)),
-              ],
-            ),
-          )
+          const SizedBox(height: 20),
+          Text(serviceName, style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 4),
+          Text('Dr. $doctorName', style: const TextStyle(color: Colors.white, fontSize: 16)),
+          const SizedBox(height: 20),
+          Row(
+            children: [
+              const Icon(Icons.calendar_today, color: Colors.white, size: 16),
+              const SizedBox(width: 8),
+              Text(dateStr, style: const TextStyle(color: Colors.white)),
+              const SizedBox(width: 16),
+              const Icon(Icons.access_time, color: Colors.white, size: 16),
+              const SizedBox(width: 8),
+              Text(timeStr, style: const TextStyle(color: Colors.white)),
+            ],
+          ),
         ],
       ),
     );
   }
 }
 
+// ----------------------------------------------------
+// Vista: Records
+// ----------------------------------------------------
+class ClientRecordsView extends StatefulWidget {
+  const ClientRecordsView({super.key});
+
+  @override
+  State<ClientRecordsView> createState() => _ClientRecordsViewState();
+}
+
+class _ClientRecordsViewState extends State<ClientRecordsView> {
+  List<dynamic> _completedAppointments = [];
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchRecords();
+  }
+
+  Future<void> _fetchRecords() async {
+    final client = Supabase.instance.client;
+    final user = client.auth.currentUser;
+    if (user == null) return;
+
+    try {
+      final patientRes = await client.from('patients').select('id').eq('profile_id', user.id).limit(1);
+      if (patientRes.isEmpty) {
+        setState(() => _isLoading = false);
+        return;
+      }
+
+      final patientId = patientRes[0]['id'];
+
+      final apptRes = await client
+          .from('appointments')
+          .select('*, doctors(profiles(name)), services(service_name)')
+          .eq('patient_id', patientId)
+          .eq('status', 'completed')
+          .order('date_time', ascending: false);
+
+      setState(() {
+        _completedAppointments = apptRes;
+      });
+    } catch (e) {
+      debugPrint('Error fetching records: $e');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isLoading) return const Center(child: CircularProgressIndicator());
+
+    return ListView(
+      padding: const EdgeInsets.all(20.0),
+      children: [
+        const Text('Historial Médico', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: AppColors.primaryBlue)),
+        const SizedBox(height: 16),
+        if (_completedAppointments.isEmpty)
+          const Text('No hay registros médicos disponibles.', style: TextStyle(color: Colors.grey))
+        else
+          ..._completedAppointments.map((appt) {
+            final date = DateTime.parse(appt['date_time']).toLocal();
+            final doctorName = appt['doctors']?['profiles']?['name'] ?? 'Doctor';
+            final serviceName = appt['services']?['service_name'] ?? 'Consulta';
+
+            return Card(
+              margin: const EdgeInsets.only(bottom: 12),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              child: ListTile(
+                leading: const CircleAvatar(
+                  backgroundColor: AppColors.lightBlueAccent,
+                  child: Icon(Icons.check_circle, color: AppColors.primaryBlue),
+                ),
+                title: Text(serviceName, style: const TextStyle(fontWeight: FontWeight.bold)),
+                subtitle: Text('Dr. $doctorName - ${DateFormat('dd MMM yyyy').format(date)}'),
+              ),
+            );
+          }),
+      ],
+    );
+  }
+}
+
 // Vista de Schedule (Segunda pestaña)
-class ClientScheduleView extends ConsumerWidget {
+class ClientScheduleView extends ConsumerStatefulWidget {
   const ClientScheduleView({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ClientScheduleView> createState() => _ClientScheduleViewState();
+}
+
+class _ClientScheduleViewState extends ConsumerState<ClientScheduleView> {
+  @override
+  Widget build(BuildContext context) {
     final appointmentsAsync = ref.watch(clientAppointmentsProvider);
 
     return Padding(

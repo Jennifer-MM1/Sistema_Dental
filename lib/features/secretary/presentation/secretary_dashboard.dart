@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:sistema_dental/core/theme/app_colors.dart';
 import 'package:go_router/go_router.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class SecretaryDashboard extends StatefulWidget {
   const SecretaryDashboard({super.key});
@@ -170,9 +171,38 @@ class _SecretaryDashboardState extends State<SecretaryDashboard> {
           const SizedBox(width: 16),
           const Icon(Icons.notifications_none, color: AppColors.error),
           const SizedBox(width: 16),
-          InkWell(
-            onTap: () => context.go('/login'),
-            child: const Icon(Icons.account_circle_outlined, color: AppColors.textSecondary),
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.account_circle_outlined, color: AppColors.textSecondary),
+            onSelected: (value) async {
+              if (value == 'mode') {
+                context.go('/mode_selector');
+              } else if (value == 'logout') {
+                await Supabase.instance.client.auth.signOut();
+                if (context.mounted) context.go('/login');
+              }
+            },
+            itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: 'mode',
+                child: Row(
+                  children: [
+                    Icon(Icons.swap_horiz, color: AppColors.textPrimary),
+                    SizedBox(width: 8),
+                    Text('Cambiar Modo'),
+                  ],
+                ),
+              ),
+              const PopupMenuItem(
+                value: 'logout',
+                child: Row(
+                  children: [
+                    Icon(Icons.logout, color: AppColors.error),
+                    SizedBox(width: 8),
+                    Text('Cerrar Sesión', style: TextStyle(color: AppColors.error)),
+                  ],
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -197,11 +227,96 @@ class _SecretaryDashboardState extends State<SecretaryDashboard> {
 // Vistas Individuales
 // ----------------------------------------------------
 
-class SecretaryDashboardView extends StatelessWidget {
+class SecretaryDashboardView extends StatefulWidget {
   const SecretaryDashboardView({super.key});
 
   @override
+  State<SecretaryDashboardView> createState() => _SecretaryDashboardViewState();
+}
+
+class _SecretaryDashboardViewState extends State<SecretaryDashboardView> {
+  bool _isLoading = true;
+  int _appointmentsToday = 0;
+  int _newPatients = 0;
+  int _activeDentists = 0;
+  double _dailyIncome = 0;
+  List<dynamic> _upcomingAppts = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchStats();
+  }
+
+  Future<void> _fetchStats() async {
+    final client = Supabase.instance.client;
+    final user = client.auth.currentUser;
+    if (user == null) return;
+
+    try {
+      final membership = await client
+          .from('clinic_memberships')
+          .select('clinic_id')
+          .eq('user_id', user.id)
+          .limit(1)
+          .single();
+      
+      final clinicId = membership['clinic_id'];
+
+      // Dentists
+      final dentists = await client
+          .from('clinic_memberships')
+          .select('id')
+          .eq('clinic_id', clinicId)
+          .inFilter('role_in_clinic', ['owner', 'dentist'])
+          .eq('is_active', true);
+      _activeDentists = dentists.length;
+
+      // Patients
+      final patients = await client
+          .from('clinic_memberships')
+          .select('id')
+          .eq('clinic_id', clinicId)
+          .eq('role_in_clinic', 'client')
+          .eq('is_active', true);
+      _newPatients = patients.length;
+
+      // Appointments Today
+      final today = DateTime.now();
+      final startOfDay = DateTime(today.year, today.month, today.day).toUtc().toIso8601String();
+      final endOfDay = DateTime(today.year, today.month, today.day, 23, 59, 59).toUtc().toIso8601String();
+
+      final appts = await client
+          .from('appointments')
+          .select('*, patients(first_name, last_name), doctors(profiles(name)), services(service_name, price)')
+          .eq('clinic_id', clinicId)
+          .gte('date_time', startOfDay)
+          .lte('date_time', endOfDay)
+          .order('date_time', ascending: true);
+
+      _appointmentsToday = appts.length;
+      
+      double income = 0;
+      for (var appt in appts) {
+        if (appt['status'] == 'completed') {
+          income += (appt['services']?['price'] ?? 0).toDouble();
+        }
+      }
+      _dailyIncome = income;
+      
+      _upcomingAppts = appts.where((a) => a['status'] != 'completed' && a['status'] != 'cancelled').take(3).toList();
+
+    } catch (e) {
+      debugPrint('Error fetch stats: $e');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    if (_isLoading) return const Center(child: CircularProgressIndicator());
+
     final isDesktop = MediaQuery.of(context).size.width > 900;
     
     return SingleChildScrollView(
@@ -214,7 +329,6 @@ class SecretaryDashboardView extends StatelessWidget {
           const Text('Resumen general de la clínica para el día de hoy.', style: TextStyle(color: AppColors.textSecondary)),
           const SizedBox(height: 32),
           
-          // LayoutBuilder para KPIs en lugar de GridView que fallaba en alturas
           LayoutBuilder(
             builder: (context, constraints) {
               int columns = constraints.maxWidth > 900 ? 4 : (constraints.maxWidth > 600 ? 2 : 1);
@@ -223,10 +337,10 @@ class SecretaryDashboardView extends StatelessWidget {
                 spacing: 16,
                 runSpacing: 16,
                 children: [
-                  SizedBox(width: width, child: _buildStatCard('Citas Hoy', '42', 'En 3 consultorios', Icons.calendar_today)),
-                  SizedBox(width: width, child: _buildStatCard('Nuevos Pacientes', '5', 'Esta semana', Icons.person_add_alt_1)),
-                  SizedBox(width: width, child: _buildStatCard('Dentistas Activos', '4', 'En turno', Icons.medical_services)),
-                  SizedBox(width: width, child: _buildStatCard('Ingresos Diarios', '\$1,240', '+15% vs ayer', Icons.attach_money)),
+                  SizedBox(width: width, child: _buildStatCard('Citas Hoy', '$_appointmentsToday', 'Citas programadas', Icons.calendar_today)),
+                  SizedBox(width: width, child: _buildStatCard('Clientes', '$_newPatients', 'En la clínica', Icons.person_add_alt_1)),
+                  SizedBox(width: width, child: _buildStatCard('Dentistas', '$_activeDentists', 'Activos', Icons.medical_services)),
+                  SizedBox(width: width, child: _buildStatCard('Ingresos Diarios', '\$${_dailyIncome.toStringAsFixed(2)}', 'En citas completadas', Icons.attach_money)),
                 ],
               );
             }
@@ -316,11 +430,25 @@ class SecretaryDashboardView extends StatelessWidget {
           const Text('Citas Inminentes (Global)', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
           const SizedBox(height: 16),
           const Divider(),
-          _buildAppointmentRow('10:00 AM', 'Carlos Mendoza', 'Dr. Aris', 'Extracción'),
-          const Divider(),
-          _buildAppointmentRow('10:15 AM', 'Lucía Fernández', 'Dra. Elena', 'Consulta General'),
-          const Divider(),
-          _buildAppointmentRow('10:30 AM', 'Mateo Ruiz', 'Dr. Roberto', 'Ortodoncia'),
+          if (_upcomingAppts.isEmpty)
+            const Padding(
+              padding: EdgeInsets.all(16.0),
+              child: Text('No hay citas pendientes para hoy.', style: TextStyle(color: Colors.grey)),
+            )
+          else
+            ..._upcomingAppts.map((appt) {
+              final date = DateTime.parse(appt['date_time']).toLocal();
+              final time = '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+              final patientName = '${appt['patients']?['first_name'] ?? 'Paciente'} ${appt['patients']?['last_name'] ?? ''}';
+              final doctorName = appt['doctors']?['profiles']?['name'] ?? 'Doctor';
+              final reason = appt['services']?['service_name'] ?? 'Consulta';
+              return Column(
+                children: [
+                  _buildAppointmentRow(time, patientName, 'Dr. $doctorName', reason),
+                  const Divider(),
+                ],
+              );
+            }),
         ],
       ),
     );
@@ -375,11 +503,68 @@ class SecretaryDashboardView extends StatelessWidget {
   }
 }
 
-class PatientsManagementView extends StatelessWidget {
+class PatientsManagementView extends StatefulWidget {
   const PatientsManagementView({super.key});
 
   @override
+  State<PatientsManagementView> createState() => _PatientsManagementViewState();
+}
+
+class _PatientsManagementViewState extends State<PatientsManagementView> {
+  bool _isLoading = true;
+  List<dynamic> _patients = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchPatients();
+  }
+
+  Future<void> _fetchPatients() async {
+    final client = Supabase.instance.client;
+    final user = client.auth.currentUser;
+    if (user == null) return;
+
+    try {
+      final membership = await client
+          .from('clinic_memberships')
+          .select('clinic_id')
+          .eq('user_id', user.id)
+          .limit(1)
+          .single();
+      
+      final clinicId = membership['clinic_id'];
+
+      // Fetch users who are clients in this clinic
+      final clientsRes = await client
+          .from('clinic_memberships')
+          .select('user_id')
+          .eq('clinic_id', clinicId)
+          .eq('role_in_clinic', 'client');
+
+      if (clientsRes.isNotEmpty) {
+        final userIds = clientsRes.map((c) => c['user_id']).toList();
+        
+        final patientsRes = await client
+            .from('patients')
+            .select('*, profiles(phone)')
+            .inFilter('profile_id', userIds);
+            
+        setState(() {
+          _patients = patientsRes;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error fetch patients: $e');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    if (_isLoading) return const Center(child: CircularProgressIndicator());
+
     final isDesktop = MediaQuery.of(context).size.width > 900;
     
     return Scaffold(
@@ -427,16 +612,30 @@ class PatientsManagementView extends StatelessWidget {
                            SizedBox(width: 100, child: Text('ID', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey))),
                            SizedBox(width: 250, child: Text('Nombre del Paciente', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey))),
                            SizedBox(width: 150, child: Text('Teléfono', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey))),
-                           SizedBox(width: 150, child: Text('Última Visita', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey))),
+                           SizedBox(width: 150, child: Text('Relación', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey))),
                            SizedBox(width: 100, child: Text('Acciones', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey))),
                          ],
                        ),
                        const Divider(height: 32),
-                       _buildPatientRow('DS-2024-9912', 'Ana Martínez', '+34 612 345 678', '14 Oct, 2023'),
-                       const Divider(),
-                       _buildPatientRow('DS-2024-9913', 'Carlos Mendoza', '+34 699 888 777', '12 Oct, 2023'),
-                       const Divider(),
-                       _buildPatientRow('DS-2024-9914', 'Lucía Fernández', '+34 655 444 333', '10 Sep, 2023'),
+                       if (_patients.isEmpty)
+                         const Padding(
+                           padding: EdgeInsets.all(16.0),
+                           child: Text('No hay pacientes registrados en esta clínica.', style: TextStyle(color: Colors.grey)),
+                         )
+                       else
+                         ..._patients.map((p) {
+                           final id = p['id'].toString().substring(0, 8);
+                           final name = '${p['first_name']} ${p['last_name']}';
+                           final phone = p['profiles']?['phone'] ?? 'No registrado';
+                           final relation = p['relationship'] ?? 'self';
+                           
+                           return Column(
+                             children: [
+                               _buildPatientRow(id, name, phone, relation),
+                               const Divider(),
+                             ],
+                           );
+                         }),
                      ],
                    ),
                  ),
@@ -476,11 +675,58 @@ class PatientsManagementView extends StatelessWidget {
   }
 }
 
-class DentistsManagementView extends StatelessWidget {
+class DentistsManagementView extends StatefulWidget {
   const DentistsManagementView({super.key});
 
   @override
+  State<DentistsManagementView> createState() => _DentistsManagementViewState();
+}
+
+class _DentistsManagementViewState extends State<DentistsManagementView> {
+  bool _isLoading = true;
+  List<dynamic> _dentists = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchDentists();
+  }
+
+  Future<void> _fetchDentists() async {
+    final client = Supabase.instance.client;
+    final user = client.auth.currentUser;
+    if (user == null) return;
+
+    try {
+      final membership = await client
+          .from('clinic_memberships')
+          .select('clinic_id')
+          .eq('user_id', user.id)
+          .limit(1)
+          .single();
+      
+      final clinicId = membership['clinic_id'];
+
+      final dentistsRes = await client
+          .from('clinic_memberships')
+          .select('*, profiles(name)')
+          .eq('clinic_id', clinicId)
+          .inFilter('role_in_clinic', ['owner', 'dentist']);
+
+      setState(() {
+        _dentists = dentistsRes;
+      });
+    } catch (e) {
+      debugPrint('Error fetch dentists: $e');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    if (_isLoading) return const Center(child: CircularProgressIndicator());
+
     final isDesktop = MediaQuery.of(context).size.width > 900;
     
     return Scaffold(
@@ -512,25 +758,28 @@ class DentistsManagementView extends StatelessWidget {
                ],
              ),
              const SizedBox(height: 24),
-             LayoutBuilder(
-               builder: (context, constraints) {
-                 int columns = constraints.maxWidth > 1100 ? 3 : (constraints.maxWidth > 700 ? 2 : 1);
-                 double width = (constraints.maxWidth - (columns - 1) * 24) / columns;
-                 final dentists = [
-                   {'name': 'Dra. Elena Martínez', 'specialty': 'Ortodoncia', 'room': 'Consultorio 1', 'isOnline': true},
-                   {'name': 'Dr. Roberto Valenzuela', 'specialty': 'General', 'room': 'Consultorio 2', 'isOnline': true},
-                   {'name': 'Dr. Aris', 'specialty': 'Cirugía', 'room': 'Consultorio 3', 'isOnline': false},
-                 ];
-                 return Wrap(
-                   spacing: 24,
-                   runSpacing: 24,
-                   children: dentists.map((doc) => SizedBox(
-                     width: width,
-                     child: _buildDentistCard(doc['name'] as String, doc['specialty'] as String, doc['room'] as String, doc['isOnline'] as bool),
-                   )).toList(),
-                 );
-               }
-             )
+             if (_dentists.isEmpty)
+               const Text('No hay dentistas registrados.', style: TextStyle(color: Colors.grey))
+             else
+               LayoutBuilder(
+                 builder: (context, constraints) {
+                   int columns = constraints.maxWidth > 1100 ? 3 : (constraints.maxWidth > 700 ? 2 : 1);
+                   double width = (constraints.maxWidth - (columns - 1) * 24) / columns;
+                   return Wrap(
+                     spacing: 24,
+                     runSpacing: 24,
+                     children: _dentists.map((doc) {
+                       final name = doc['profiles']?['name'] ?? 'Doctor';
+                       final specialty = doc['role_in_clinic'] == 'owner' ? 'Director/General' : 'General';
+                       final isOnline = doc['is_active'] == true;
+                       return SizedBox(
+                         width: width,
+                         child: _buildDentistCard(name, specialty, 'Consultorio', isOnline),
+                       );
+                     }).toList(),
+                   );
+                 }
+               )
           ],
         ),
       ),
