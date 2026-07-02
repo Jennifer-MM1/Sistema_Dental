@@ -4,10 +4,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sistema_dental/core/theme/app_colors.dart';
 import 'package:go_router/go_router.dart';
 import 'package:sistema_dental/features/dentist/presentation/widgets/quick_actions_dialogs.dart';
+import 'package:sistema_dental/features/dentist/presentation/widgets/staff_management_view.dart';
 import 'package:file_picker/file_picker.dart' as fp;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:sistema_dental/features/shared/data/appointment_repository.dart';
-import 'package:sistema_dental/core/models/appointment.dart';
 import 'package:intl/intl.dart';
 
 class DentistDashboard extends StatefulWidget {
@@ -74,7 +74,7 @@ class _DentistDashboardState extends State<DentistDashboard> {
           _buildSidebarItem(1, Icons.access_time, 'Citas Activas'),
           _buildSidebarItem(2, Icons.folder_open, 'Pacientes Clínicos'),
           _buildSidebarItem(3, Icons.people, 'Clientes Asociados'),
-          _buildSidebarItem(4, Icons.badge, 'Compañeros de Trabajo'),
+          _buildSidebarItem(4, Icons.badge, 'Personal y Consultorios'),
           _buildSidebarItem(5, Icons.qr_code_2, 'Código QR Clínica'),
           _buildSidebarItem(6, Icons.settings_outlined, 'Configuración'),
           const Spacer(),
@@ -242,7 +242,7 @@ class _DentistDashboardState extends State<DentistDashboard> {
       case 3:
         return const PatientsView(); // Clientes Asociados
       case 4:
-        return const CoworkersView(); // Compañeros de Trabajo
+        return const StaffManagementView(); // Gestión de Personal y Consultorios
       case 5:
         return const QRCodeView(); // Código QR Único
       case 6:
@@ -690,45 +690,6 @@ class _DashboardViewState extends State<DashboardView> {
               Icon(isUp ? Icons.arrow_upward : Icons.circle, size: 12, color: isUp ? AppColors.primaryBlue : AppColors.primaryBlue),
               const SizedBox(width: 4),
               Expanded(child: Text(subtitle, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildQueueItem(String name, String details, String time, String status, Color statusColor, {bool isError = false}) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0),
-      child: Row(
-        children: [
-          CircleAvatar(
-            backgroundColor: AppColors.primaryBlue.withValues(alpha: 0.1),
-            child: Text(name.substring(0, 2), style: const TextStyle(color: AppColors.primaryBlue)),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(name, style: const TextStyle(fontWeight: FontWeight.bold), overflow: TextOverflow.ellipsis),
-                Text(details, style: const TextStyle(color: AppColors.textSecondary, fontSize: 12), overflow: TextOverflow.ellipsis),
-              ],
-            ),
-          ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(time, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
-              const SizedBox(height: 4),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: statusColor,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(status, style: TextStyle(color: isError ? AppColors.error : AppColors.primaryBlue, fontSize: 10, fontWeight: FontWeight.bold)),
-              ),
             ],
           ),
         ],

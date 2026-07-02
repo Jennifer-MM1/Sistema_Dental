@@ -1,4 +1,4 @@
-import 'package:sistema_dental/core/models/app_user.dart';
+
 
 /// Modelo que representa una ficha de paciente (multi-paciente por cuenta).
 class Patient {

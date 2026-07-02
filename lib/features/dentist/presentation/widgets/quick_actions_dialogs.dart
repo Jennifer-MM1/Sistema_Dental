@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:sistema_dental/core/theme/app_colors.dart';
 import 'package:intl/intl.dart';
-import 'package:file_picker/file_picker.dart';
 
 class AddPatientDialog extends StatefulWidget {
   final String clinicId;

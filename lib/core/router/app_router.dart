@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:sistema_dental/core/models/user_role.dart';
 import 'package:sistema_dental/features/auth/presentation/register_screen.dart';
 import 'package:sistema_dental/features/auth/presentation/role_selection_screen.dart';
 import 'package:sistema_dental/features/auth/presentation/login_screen.dart';

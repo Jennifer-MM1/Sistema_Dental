@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:sistema_dental/core/models/patient.dart';
 import 'package:sistema_dental/core/theme/app_colors.dart';
 import 'package:sistema_dental/features/auth/providers/auth_providers.dart';
 import 'package:sistema_dental/features/client/data/patient_repository.dart';
