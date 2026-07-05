@@ -1,6 +1,6 @@
 import 'dart:io';
 import 'package:firebase_messaging/firebase_messaging.dart';
-import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -226,10 +226,4 @@ class FcmService {
     if (Platform.isMacOS) return 'watch_os'; // Placeholder para macOS
     return 'android';
   }
-}
-
-// Necesario para usar Color sin importar flutter/material.dart en este archivo
-class Color {
-  final int value;
-  const Color(this.value);
 }
