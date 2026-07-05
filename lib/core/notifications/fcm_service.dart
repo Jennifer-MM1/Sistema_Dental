@@ -49,7 +49,7 @@ class FcmService {
   Future<void> initialize() async {
     // FCM no está disponible en Windows/Linux desktop
     if (!_isFcmSupported) {
-      debugPrint('[FCM] Plataforma no soportada: ${Platform.operatingSystem}');
+      debugPrint('[FCM] Plataforma no soportada: ${kIsWeb ? 'web' : Platform.operatingSystem}');
       return;
     }
 
