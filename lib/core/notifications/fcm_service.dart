@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -217,10 +218,13 @@ class FcmService {
   //  UTILIDADES
   // ───────────────────────────────────────────────────────────────────────────
 
-  bool get _isFcmSupported =>
-      Platform.isAndroid || Platform.isIOS || Platform.isMacOS;
+  bool get _isFcmSupported {
+    if (kIsWeb) return false;
+    return Platform.isAndroid || Platform.isIOS || Platform.isMacOS;
+  }
 
   String _getDeviceType() {
+    if (kIsWeb) return 'web';
     if (Platform.isAndroid) return 'android';
     if (Platform.isIOS) return 'ios';
     if (Platform.isMacOS) return 'watch_os'; // Placeholder para macOS
