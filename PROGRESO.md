@@ -36,6 +36,23 @@ Se estructuró la infraestructura de comunicación para alertar a los pacientes 
   * Autenticación segura mediante la API v1 de FCM utilizando una cuenta de servicio de Firebase (`FIREBASE_SERVICE_ACCOUNT` secret).
   * Detección y limpieza automática en base de datos de tokens FCM obsoletos o desinstalados (`UNREGISTERED`).
 
+
+---
+
+## 📱 Compatibilidad Multidispositivo (Estado Actual)
+
+El sistema está diseñado en **Flutter** para ser multidispositivo, adaptándose de la siguiente manera:
+
+* **Celulares y Tablets (Android / iOS):**
+  * **Diseño:** 100% responsivo. Las pantallas adaptan automáticamente sus menús, botones y componentes visuales para un uso táctil cómodo en cualquier tamaño.
+  * **Notificaciones:** Listas en Android. En iOS requiere configurar las credenciales APNs en Firebase Console.
+* **Computadoras de Escritorio / Laptops (PC / Web):**
+  * **Diseño:** Optimizado para pantallas horizontales amplias (barra de navegación lateral persistente, tablas organizadas y flujos de trabajo paralelos).
+  * **Notificaciones:** Integradas a través del canal en tiempo real de Supabase (`Realtime`), garantizando actualizaciones al instante sin depender de sistemas de push tradicionales de celular.
+* **Relojes Inteligentes (Smartwatches - Wear OS / watchOS):**
+  * **Modo Espejo (Mirroring):** Funcional por defecto. Al recibir notificaciones push en el teléfono enlazado, se duplican directamente en el reloj del usuario sin configuraciones extras.
+  * **Aplicación Nativa:** Infraestructura lista en base de datos (`linked_devices` soporta tipo `watch_os`) y Edge Function preparada. Resta desarrollar la mini-interfaz especializada para relojes dentro de Flutter.
+
 ---
 
 ## 🚀 Próximas Funcionalidades (Sugeridas para Implementar)
