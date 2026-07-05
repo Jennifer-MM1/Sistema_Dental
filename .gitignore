@@ -46,3 +46,5 @@ app.*.map.json
 
 # Entorno y Secretos
 .env
+.firebase-sa.json
+*.json.secret
