@@ -63,7 +63,7 @@ class LoginNotifier extends Notifier<LoginState> {
 
   /// Ejecuta el login con email y contraseña.
   Future<AppUser?> login(String email, String password) async {
-    state = state.copyWith(isLoading: true, errorMessage: null);
+    state = const LoginState(isLoading: true);
 
     final repo = ref.read(authRepositoryProvider);
 
@@ -83,7 +83,8 @@ class LoginNotifier extends Notifier<LoginState> {
         await repo.signOut();
         state = state.copyWith(
           isLoading: false,
-          errorMessage: 'Tu cuenta ha sido desactivada. Contacta al administrador.',
+          errorMessage:
+              'Tu cuenta ha sido desactivada. Contacta al administrador.',
         );
         return null;
       }
@@ -99,7 +100,7 @@ class LoginNotifier extends Notifier<LoginState> {
     } catch (e) {
       state = state.copyWith(
         isLoading: false,
-        errorMessage: 'Error de conexión. Intenta de nuevo.',
+        errorMessage: _translateConnectionError(e),
       );
       return null;
     }
@@ -107,7 +108,7 @@ class LoginNotifier extends Notifier<LoginState> {
 
   /// Registra un nuevo usuario con email, contraseña y nombre.
   Future<AppUser?> register(String name, String email, String password) async {
-    state = state.copyWith(isLoading: true, errorMessage: null);
+    state = const LoginState(isLoading: true);
 
     try {
       final repo = ref.read(authRepositoryProvider);
@@ -130,7 +131,8 @@ class LoginNotifier extends Notifier<LoginState> {
       if (response.session == null) {
         state = state.copyWith(
           isLoading: false,
-          successMessage: 'Cuenta creada exitosamente. Por favor revisa tu correo electrónico para verificar tu cuenta antes de iniciar sesión.',
+          successMessage:
+              'Cuenta creada exitosamente. Por favor revisa tu correo electrónico para verificar tu cuenta antes de iniciar sesión.',
         );
         return null; // Retornamos null para que no intente redirigir al hub todavía
       }
@@ -143,12 +145,8 @@ class LoginNotifier extends Notifier<LoginState> {
         role: UserRole.client, // Will be overridden dynamically by the Hub
       );
 
-      state = state.copyWith(
-        isLoading: false,
-        user: appUser,
-      );
+      state = state.copyWith(isLoading: false, user: appUser);
       return appUser;
-
     } on AuthException catch (e) {
       state = state.copyWith(
         isLoading: false,
@@ -158,7 +156,7 @@ class LoginNotifier extends Notifier<LoginState> {
     } catch (e) {
       state = state.copyWith(
         isLoading: false,
-        errorMessage: 'Error de conexión. Intenta de nuevo.',
+        errorMessage: _translateConnectionError(e),
       );
       return null;
     }
@@ -192,6 +190,10 @@ class LoginNotifier extends Notifier<LoginState> {
   }
 
   String _translateAuthError(String message) {
+    final normalized = message.toLowerCase();
+    if (_isConnectionError(normalized)) {
+      return 'No tienes conexión a internet. Revisa tu Wi-Fi o datos móviles e intenta de nuevo.';
+    }
     if (message.contains('Invalid login credentials')) {
       return 'Correo o contraseña incorrectos.';
     }
@@ -199,6 +201,25 @@ class LoginNotifier extends Notifier<LoginState> {
       return 'Debes confirmar tu correo electrónico primero.';
     }
     return 'Error de autenticación: $message';
+  }
+
+  String _translateConnectionError(Object error) {
+    final message = error.toString().toLowerCase();
+    if (_isConnectionError(message)) {
+      return 'No tienes conexión a internet. Revisa tu Wi-Fi o datos móviles e intenta de nuevo.';
+    }
+    return 'No pudimos conectar con el servidor. Intenta de nuevo en unos segundos.';
+  }
+
+  bool _isConnectionError(String message) {
+    return message.contains('socketexception') ||
+        message.contains('failed host lookup') ||
+        message.contains('no address associated with hostname') ||
+        message.contains('network is unreachable') ||
+        message.contains('connection refused') ||
+        message.contains('connection timed out') ||
+        message.contains('timed out') ||
+        message.contains('clientexception');
   }
 }
 

@@ -18,6 +18,7 @@ class _StaffManagementViewState extends State<StaffManagementView> {
   String? _clinicId;
   List<StaffMember> _staff = [];
   bool _isLoading = true;
+  String? _loadError;
 
   @override
   void initState() {
@@ -27,15 +28,21 @@ class _StaffManagementViewState extends State<StaffManagementView> {
   }
 
   Future<void> _loadData() async {
-    setState(() => _isLoading = true);
+    setState(() {
+      _isLoading = true;
+      _loadError = null;
+    });
     final client = Supabase.instance.client;
     final user = client.auth.currentUser;
-    if (user == null) return;
+    if (user == null) {
+      if (mounted) setState(() => _isLoading = false);
+      return;
+    }
 
     try {
       final membership = await client
           .from('clinic_memberships')
-          .select('clinic_id')
+          .select('clinic_id, role_in_clinic')
           .eq('user_id', user.id)
           .inFilter('role_in_clinic', ['owner', 'dentist', 'secretary'])
           .eq('is_active', true)
@@ -48,9 +55,14 @@ class _StaffManagementViewState extends State<StaffManagementView> {
       }
 
       _clinicId = membership['clinic_id'] as String;
+      final role = membership['role_in_clinic'] as String?;
+      if (role == 'owner' || role == 'dentist') {
+        await _repo.ensureDoctorRecord(userId: user.id, clinicId: _clinicId!);
+      }
       _staff = await _repo.getStaffInClinic(_clinicId!);
     } catch (e) {
       debugPrint('Error loading staff: $e');
+      _loadError = 'No se pudo cargar el personal de la clínica.';
     }
     setState(() => _isLoading = false);
   }
@@ -89,7 +101,9 @@ class _StaffManagementViewState extends State<StaffManagementView> {
                               ),
                               Text(
                                 '${_staff.length} miembro${_staff.length != 1 ? "s" : ""} activos en la clínica',
-                                style: const TextStyle(color: AppColors.textSecondary),
+                                style: const TextStyle(
+                                  color: AppColors.textSecondary,
+                                ),
                               ),
                             ],
                           ),
@@ -100,17 +114,26 @@ class _StaffManagementViewState extends State<StaffManagementView> {
                           label: const Text('Actualizar'),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: AppColors.primaryBlue,
-                            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 20,
+                              vertical: 12,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
                           ),
                         ),
                       ],
                     ),
                     const SizedBox(height: 28),
 
-                    // ── Estadísticas rápidas ──────────────────────────────
-                    _buildStatsRow(),
-                    const SizedBox(height: 28),
+                    if (_loadError != null) ...[
+                      _buildErrorState(),
+                      const SizedBox(height: 28),
+                    ] else ...[
+                      _buildStatsRow(),
+                      const SizedBox(height: 28),
+                    ],
 
                     // ── Lista de personal ─────────────────────────────────
                     if (_staff.isEmpty)
@@ -118,7 +141,10 @@ class _StaffManagementViewState extends State<StaffManagementView> {
                     else ...[
                       const Text(
                         'Personal Activo',
-                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                       const SizedBox(height: 16),
                       if (isDesktop)
@@ -126,12 +152,13 @@ class _StaffManagementViewState extends State<StaffManagementView> {
                         GridView.builder(
                           shrinkWrap: true,
                           physics: const NeverScrollableScrollPhysics(),
-                          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: 2,
-                            crossAxisSpacing: 16,
-                            mainAxisSpacing: 16,
-                            childAspectRatio: 1.6,
-                          ),
+                          gridDelegate:
+                              const SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: 2,
+                                crossAxisSpacing: 16,
+                                mainAxisSpacing: 16,
+                                childAspectRatio: 1.25,
+                              ),
                           itemCount: _staff.length,
                           itemBuilder: (ctx, i) => _StaffCard(
                             member: _staff[i],
@@ -146,7 +173,8 @@ class _StaffManagementViewState extends State<StaffManagementView> {
                           shrinkWrap: true,
                           physics: const NeverScrollableScrollPhysics(),
                           itemCount: _staff.length,
-                          separatorBuilder: (_, _) => const SizedBox(height: 12),
+                          separatorBuilder: (_, _) =>
+                              const SizedBox(height: 12),
                           itemBuilder: (ctx, i) => _StaffCard(
                             member: _staff[i],
                             clinicId: _clinicId ?? '',
@@ -163,22 +191,68 @@ class _StaffManagementViewState extends State<StaffManagementView> {
   }
 
   Widget _buildStatsRow() {
-    final dentists = _staff.where((s) => s.roleInClinic == 'owner' || s.roleInClinic == 'dentist').length;
-    final secretaries = _staff.where((s) => s.roleInClinic == 'secretary').length;
-    final available = _staff.where((s) => s.isAvailable && s.hasDocRecord).length;
+    final dentists = _staff
+        .where((s) => s.roleInClinic == 'owner' || s.roleInClinic == 'dentist')
+        .length;
+    final secretaries = _staff
+        .where((s) => s.roleInClinic == 'secretary')
+        .length;
+    final available = _staff
+        .where((s) => s.isAvailable && s.hasDocRecord)
+        .length;
 
-    return Row(
-      children: [
-        Expanded(child: _buildStatChip(Icons.medical_services_outlined, '$dentists', 'Dentistas', AppColors.primaryBlue)),
-        const SizedBox(width: 12),
-        Expanded(child: _buildStatChip(Icons.support_agent, '$secretaries', 'Secretarias', const Color(0xFF7C3AED))),
-        const SizedBox(width: 12),
-        Expanded(child: _buildStatChip(Icons.check_circle_outline, '$available', 'Disponibles', AppColors.success)),
-      ],
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final columns = constraints.maxWidth >= 760
+            ? 3
+            : constraints.maxWidth >= 420
+            ? 2
+            : 1;
+        final width = (constraints.maxWidth - ((columns - 1) * 12)) / columns;
+
+        return Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          children: [
+            SizedBox(
+              width: width,
+              child: _buildStatChip(
+                Icons.medical_services_outlined,
+                '$dentists',
+                'Dentistas',
+                AppColors.primaryBlue,
+              ),
+            ),
+            SizedBox(
+              width: width,
+              child: _buildStatChip(
+                Icons.support_agent,
+                '$secretaries',
+                'Secretarias',
+                const Color(0xFF7C3AED),
+              ),
+            ),
+            SizedBox(
+              width: width,
+              child: _buildStatChip(
+                Icons.check_circle_outline,
+                '$available',
+                'Disponibles',
+                AppColors.success,
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 
-  Widget _buildStatChip(IconData icon, String value, String label, Color color) {
+  Widget _buildStatChip(
+    IconData icon,
+    String value,
+    String label,
+    Color color,
+  ) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -190,12 +264,26 @@ class _StaffManagementViewState extends State<StaffManagementView> {
         children: [
           Icon(icon, color: color, size: 28),
           const SizedBox(width: 12),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(value, style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: color)),
-              Text(label, style: TextStyle(fontSize: 11, color: color.withAlpha(180))),
-            ],
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  value,
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                    color: color,
+                  ),
+                ),
+                Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 11, color: color.withAlpha(180)),
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -215,11 +303,49 @@ class _StaffManagementViewState extends State<StaffManagementView> {
         children: [
           Icon(Icons.people_outline, size: 64, color: Colors.grey.shade300),
           const SizedBox(height: 16),
-          const Text('Sin personal registrado',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.textSecondary)),
+          const Text(
+            'Sin personal registrado',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: AppColors.textSecondary,
+            ),
+          ),
           const SizedBox(height: 8),
-          const Text('Invita a dentistas y secretarias usando el Código QR de la clínica.',
-              textAlign: TextAlign.center, style: TextStyle(color: AppColors.textSecondary)),
+          const Text(
+            'Invita a dentistas y secretarias usando el Código QR de la clínica.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: AppColors.textSecondary),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildErrorState() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: AppColors.error.withAlpha(14),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.error.withAlpha(60)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.error_outline, color: AppColors.error),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              _loadError!,
+              style: const TextStyle(color: AppColors.error),
+            ),
+          ),
+          TextButton.icon(
+            onPressed: _loadData,
+            icon: const Icon(Icons.refresh),
+            label: const Text('Reintentar'),
+          ),
         ],
       ),
     );
@@ -284,7 +410,11 @@ class _StaffCardState extends State<_StaffCard> {
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: Colors.grey.shade200),
         boxShadow: [
-          BoxShadow(color: Colors.black.withAlpha(10), blurRadius: 8, offset: const Offset(0, 2)),
+          BoxShadow(
+            color: Colors.black.withAlpha(10),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
         ],
       ),
       child: Column(
@@ -308,7 +438,9 @@ class _StaffCardState extends State<_StaffCard> {
                         width: 14,
                         height: 14,
                         decoration: BoxDecoration(
-                          color: _member.isAvailable ? AppColors.success : AppColors.error,
+                          color: _member.isAvailable
+                              ? AppColors.success
+                              : AppColors.error,
                           shape: BoxShape.circle,
                           border: Border.all(color: Colors.white, width: 2),
                         ),
@@ -321,18 +453,32 @@ class _StaffCardState extends State<_StaffCard> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(_member.name,
-                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
-                        overflow: TextOverflow.ellipsis),
+                    Text(
+                      _member.name,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 15,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
                     const SizedBox(height: 2),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 2,
+                      ),
                       decoration: BoxDecoration(
                         color: _roleColor.withAlpha(20),
                         borderRadius: BorderRadius.circular(8),
                       ),
-                      child: Text(_member.roleLabel,
-                          style: TextStyle(color: _roleColor, fontSize: 10, fontWeight: FontWeight.bold)),
+                      child: Text(
+                        _member.roleLabel,
+                        style: TextStyle(
+                          color: _roleColor,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                     ),
                   ],
                 ),
@@ -340,7 +486,9 @@ class _StaffCardState extends State<_StaffCard> {
               // ── Switch disponibilidad (solo dentistas) ─────────
               if (_member.hasDocRecord)
                 Tooltip(
-                  message: _member.isAvailable ? 'Marcar como no disponible' : 'Marcar como disponible',
+                  message: _member.isAvailable
+                      ? 'Marcar como no disponible'
+                      : 'Marcar como disponible',
                   child: Transform.scale(
                     scale: 0.85,
                     child: Switch(
@@ -360,9 +508,19 @@ class _StaffCardState extends State<_StaffCard> {
           if (_member.hasDocRecord) ...[
             Row(
               children: [
-                const Icon(Icons.meeting_room_outlined, size: 16, color: AppColors.textSecondary),
+                const Icon(
+                  Icons.meeting_room_outlined,
+                  size: 16,
+                  color: AppColors.textSecondary,
+                ),
                 const SizedBox(width: 6),
-                const Text('Consultorio:', style: TextStyle(fontSize: 13, color: AppColors.textSecondary)),
+                const Text(
+                  'Consultorio:',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: _CabinDropdown(
@@ -379,14 +537,48 @@ class _StaffCardState extends State<_StaffCard> {
           if (_member.specialty != null && _member.specialty!.isNotEmpty)
             Row(
               children: [
-                const Icon(Icons.star_outline, size: 16, color: AppColors.textSecondary),
+                const Icon(
+                  Icons.star_outline,
+                  size: 16,
+                  color: AppColors.textSecondary,
+                ),
                 const SizedBox(width: 6),
-                Text('Especialidad: ${_member.specialty}',
-                    style: const TextStyle(fontSize: 13, color: AppColors.textSecondary)),
+                Text(
+                  'Especialidad: ${_member.specialty}',
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
               ],
             ),
 
-          const Spacer(),
+          if (!_member.hasDocRecord &&
+              (_member.roleInClinic == 'owner' ||
+                  _member.roleInClinic == 'dentist')) ...[
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.error.withAlpha(12),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: AppColors.error.withAlpha(45)),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.info_outline, size: 18, color: AppColors.error),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Falta crear el registro de consultorio para este dentista.',
+                      style: TextStyle(color: AppColors.error, fontSize: 12),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+
           const SizedBox(height: 12),
 
           // ── Acciones ──────────────────────────────────────────
@@ -397,11 +589,16 @@ class _StaffCardState extends State<_StaffCard> {
                   child: OutlinedButton.icon(
                     onPressed: () => _showScheduleSheet(context),
                     icon: const Icon(Icons.schedule, size: 16),
-                    label: const Text('Horario', style: TextStyle(fontSize: 12)),
+                    label: const Text(
+                      'Horario',
+                      style: TextStyle(fontSize: 12),
+                    ),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: AppColors.primaryBlue,
                       padding: const EdgeInsets.symmetric(vertical: 8),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
                     ),
                   ),
                 ),
@@ -410,11 +607,16 @@ class _StaffCardState extends State<_StaffCard> {
                   child: OutlinedButton.icon(
                     onPressed: () => _showDaysOffDialog(context),
                     icon: const Icon(Icons.event_busy, size: 16),
-                    label: const Text('Días Libres', style: TextStyle(fontSize: 12)),
+                    label: const Text(
+                      'Días Libres',
+                      style: TextStyle(fontSize: 12),
+                    ),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: const Color(0xFF7C3AED),
                       padding: const EdgeInsets.symmetric(vertical: 8),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
                     ),
                   ),
                 ),
@@ -423,11 +625,16 @@ class _StaffCardState extends State<_StaffCard> {
                 if (_member.hasDocRecord) const SizedBox(width: 8),
                 IconButton(
                   onPressed: () => _confirmRemoveAccess(context),
-                  icon: const Icon(Icons.remove_circle_outline, color: AppColors.error),
+                  icon: const Icon(
+                    Icons.remove_circle_outline,
+                    color: AppColors.error,
+                  ),
                   tooltip: 'Remover acceso',
                   style: IconButton.styleFrom(
                     backgroundColor: AppColors.error.withAlpha(15),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
                   ),
                 ),
               ],
@@ -463,9 +670,14 @@ class _StaffCardState extends State<_StaffCard> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('¿Remover acceso?'),
-        content: Text('¿Seguro que deseas remover el acceso de ${_member.name} a la clínica?'),
+        content: Text(
+          '¿Seguro que deseas remover el acceso de ${_member.name} a la clínica?',
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar'),
+          ),
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx, true),
             style: ElevatedButton.styleFrom(backgroundColor: AppColors.error),
@@ -475,7 +687,10 @@ class _StaffCardState extends State<_StaffCard> {
       ),
     );
     if (confirm == true) {
-      await widget.repo.removeMemberAccess(userId: _member.userId, clinicId: widget.clinicId);
+      await widget.repo.removeMemberAccess(
+        userId: _member.userId,
+        clinicId: widget.clinicId,
+      );
       widget.onRefresh();
     }
   }
@@ -484,7 +699,9 @@ class _StaffCardState extends State<_StaffCard> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
       builder: (_) => _ScheduleSheet(
         member: _member,
         clinicId: widget.clinicId,
@@ -531,8 +748,14 @@ class _CabinDropdown extends StatelessWidget {
       child: DropdownButton<String>(
         value: value,
         isDense: true,
-        style: const TextStyle(fontSize: 13, color: AppColors.primaryBlue, fontWeight: FontWeight.bold),
-        onChanged: (v) { if (v != null) onChanged(v); },
+        style: const TextStyle(
+          fontSize: 13,
+          color: AppColors.primaryBlue,
+          fontWeight: FontWeight.bold,
+        ),
+        onChanged: (v) {
+          if (v != null) onChanged(v);
+        },
         items: _cabins
             .map((c) => DropdownMenuItem(value: c, child: Text(c)))
             .toList(),
@@ -550,7 +773,11 @@ class _ScheduleSheet extends StatefulWidget {
   final String clinicId;
   final StaffRepository repo;
 
-  const _ScheduleSheet({required this.member, required this.clinicId, required this.repo});
+  const _ScheduleSheet({
+    required this.member,
+    required this.clinicId,
+    required this.repo,
+  });
 
   @override
   State<_ScheduleSheet> createState() => _ScheduleSheetState();
@@ -572,7 +799,10 @@ class _ScheduleSheetState extends State<_ScheduleSheet> {
       doctorUserId: widget.member.userId,
       clinicId: widget.clinicId,
     );
-    setState(() { _schedule = s; _isLoading = false; });
+    setState(() {
+      _schedule = s;
+      _isLoading = false;
+    });
   }
 
   Future<void> _save() async {
@@ -586,10 +816,14 @@ class _ScheduleSheetState extends State<_ScheduleSheet> {
     setState(() => _isSaving = false);
     if (mounted) {
       Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(ok ? 'Horario guardado exitosamente' : 'Error al guardar horario'),
-        backgroundColor: ok ? AppColors.success : AppColors.error,
-      ));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            ok ? 'Horario guardado exitosamente' : 'Error al guardar horario',
+          ),
+          backgroundColor: ok ? AppColors.success : AppColors.error,
+        ),
+      );
     }
   }
 
@@ -601,7 +835,9 @@ class _ScheduleSheetState extends State<_ScheduleSheet> {
       maxChildSize: 0.92,
       minChildSize: 0.4,
       builder: (ctx, scrollCtrl) => Padding(
-        padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom,
+        ),
         child: Column(
           children: [
             // Handle
@@ -610,7 +846,10 @@ class _ScheduleSheetState extends State<_ScheduleSheet> {
                 margin: const EdgeInsets.symmetric(vertical: 12),
                 width: 40,
                 height: 4,
-                decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(2)),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(2),
+                ),
               ),
             ),
             Padding(
@@ -621,17 +860,36 @@ class _ScheduleSheetState extends State<_ScheduleSheet> {
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Horario de ${widget.member.name}',
-                          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                      const Text('Toca una hora para editarla',
-                          style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                      Text(
+                        'Horario de ${widget.member.name}',
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const Text(
+                        'Toca una hora para editarla',
+                        style: TextStyle(
+                          color: AppColors.textSecondary,
+                          fontSize: 12,
+                        ),
+                      ),
                     ],
                   ),
                   ElevatedButton(
                     onPressed: _isSaving ? null : _save,
-                    style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryBlue),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primaryBlue,
+                    ),
                     child: _isSaving
-                        ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
                         : const Text('Guardar'),
                   ),
                 ],
@@ -645,7 +903,10 @@ class _ScheduleSheetState extends State<_ScheduleSheet> {
               Expanded(
                 child: ListView.builder(
                   controller: scrollCtrl,
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 24,
+                    vertical: 8,
+                  ),
                   itemCount: _schedule!.length,
                   itemBuilder: (ctx, i) {
                     final day = _schedule![i];
@@ -680,9 +941,16 @@ class _DayScheduleRow extends StatelessWidget {
     required this.onChangeEnd,
   });
 
-  Future<void> _pickTime(BuildContext context, String current, ValueChanged<String> onPick) async {
+  Future<void> _pickTime(
+    BuildContext context,
+    String current,
+    ValueChanged<String> onPick,
+  ) async {
     final parts = current.split(':');
-    final initial = TimeOfDay(hour: int.parse(parts[0]), minute: int.parse(parts[1]));
+    final initial = TimeOfDay(
+      hour: int.parse(parts[0]),
+      minute: int.parse(parts[1]),
+    );
     final picked = await showTimePicker(context: context, initialTime: initial);
     if (picked != null) {
       final h = picked.hour.toString().padLeft(2, '0');
@@ -697,10 +965,14 @@ class _DayScheduleRow extends StatelessWidget {
       margin: const EdgeInsets.symmetric(vertical: 6),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        color: day.isWorkingDay ? AppColors.primaryBlue.withAlpha(12) : Colors.grey.shade100,
+        color: day.isWorkingDay
+            ? AppColors.primaryBlue.withAlpha(12)
+            : Colors.grey.shade100,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: day.isWorkingDay ? AppColors.primaryBlue.withAlpha(60) : Colors.grey.shade300,
+          color: day.isWorkingDay
+              ? AppColors.primaryBlue.withAlpha(60)
+              : Colors.grey.shade300,
         ),
       ),
       child: Row(
@@ -712,7 +984,9 @@ class _DayScheduleRow extends StatelessWidget {
               day.dayShort,
               style: TextStyle(
                 fontWeight: FontWeight.bold,
-                color: day.isWorkingDay ? AppColors.primaryBlue : AppColors.textSecondary,
+                color: day.isWorkingDay
+                    ? AppColors.primaryBlue
+                    : AppColors.textSecondary,
               ),
             ),
           ),
@@ -732,7 +1006,13 @@ class _DayScheduleRow extends StatelessWidget {
             ),
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: 8),
-              child: Text('–', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.textSecondary)),
+              child: Text(
+                '–',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.textSecondary,
+                ),
+              ),
             ),
             // Hora fin
             GestureDetector(
@@ -740,7 +1020,10 @@ class _DayScheduleRow extends StatelessWidget {
               child: _TimeChip(time: day.endTime, label: 'Fin'),
             ),
           ] else
-            const Text('Día libre', style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+            const Text(
+              'Día libre',
+              style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
+            ),
         ],
       ),
     );
@@ -763,8 +1046,18 @@ class _TimeChip extends StatelessWidget {
       ),
       child: Column(
         children: [
-          Text(time, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
-          Text(label, style: const TextStyle(color: Colors.white70, fontSize: 9)),
+          Text(
+            time,
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+              fontSize: 14,
+            ),
+          ),
+          Text(
+            label,
+            style: const TextStyle(color: Colors.white70, fontSize: 9),
+          ),
         ],
       ),
     );
@@ -780,7 +1073,11 @@ class _DaysOffDialog extends StatefulWidget {
   final String clinicId;
   final StaffRepository repo;
 
-  const _DaysOffDialog({required this.member, required this.clinicId, required this.repo});
+  const _DaysOffDialog({
+    required this.member,
+    required this.clinicId,
+    required this.repo,
+  });
 
   @override
   State<_DaysOffDialog> createState() => _DaysOffDialogState();
@@ -810,7 +1107,10 @@ class _DaysOffDialogState extends State<_DaysOffDialog> {
       doctorUserId: widget.member.userId,
       clinicId: widget.clinicId,
     );
-    setState(() { _daysOff = list; _isLoading = false; });
+    setState(() {
+      _daysOff = list;
+      _isLoading = false;
+    });
   }
 
   Future<void> _addDayOff() async {
@@ -840,10 +1140,14 @@ class _DaysOffDialogState extends State<_DaysOffDialog> {
       title: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Días Libres – ${widget.member.name}',
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-          const Text('Agrega ausencias o vacaciones',
-              style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+          Text(
+            'Días Libres – ${widget.member.name}',
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+          ),
+          const Text(
+            'Agrega ausencias o vacaciones',
+            style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+          ),
         ],
       ),
       content: SizedBox(
@@ -862,7 +1166,10 @@ class _DaysOffDialogState extends State<_DaysOffDialog> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Agregar día libre', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                  const Text(
+                    'Agregar día libre',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                  ),
                   const SizedBox(height: 10),
                   Row(
                     children: [
@@ -871,11 +1178,17 @@ class _DaysOffDialogState extends State<_DaysOffDialog> {
                           onPressed: () async {
                             final picked = await showDatePicker(
                               context: context,
-                              initialDate: DateTime.now().add(const Duration(days: 1)),
+                              initialDate: DateTime.now().add(
+                                const Duration(days: 1),
+                              ),
                               firstDate: DateTime.now(),
-                              lastDate: DateTime.now().add(const Duration(days: 365)),
+                              lastDate: DateTime.now().add(
+                                const Duration(days: 365),
+                              ),
                             );
-                            if (picked != null) setState(() => _selectedDate = picked);
+                            if (picked != null) {
+                              setState(() => _selectedDate = picked);
+                            }
                           },
                           icon: const Icon(Icons.calendar_today, size: 16),
                           label: Text(
@@ -900,8 +1213,14 @@ class _DaysOffDialogState extends State<_DaysOffDialog> {
                       isDense: true,
                       filled: true,
                       fillColor: Colors.white,
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: BorderSide.none,
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
                     ),
                   ),
                   const SizedBox(height: 10),
@@ -923,12 +1242,18 @@ class _DaysOffDialogState extends State<_DaysOffDialog> {
             const SizedBox(height: 16),
 
             // ── Lista de días libres próximos ────────────────────
-            const Text('Ausencias programadas', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+            const Text(
+              'Ausencias programadas',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+            ),
             const SizedBox(height: 8),
             if (_isLoading)
               const Center(child: CircularProgressIndicator())
             else if (_daysOff.isEmpty)
-              const Text('Sin ausencias registradas.', style: TextStyle(color: AppColors.textSecondary))
+              const Text(
+                'Sin ausencias registradas.',
+                style: TextStyle(color: AppColors.textSecondary),
+              )
             else
               ConstrainedBox(
                 constraints: const BoxConstraints(maxHeight: 180),
@@ -940,15 +1265,32 @@ class _DaysOffDialogState extends State<_DaysOffDialog> {
                     return ListTile(
                       dense: true,
                       contentPadding: EdgeInsets.zero,
-                      leading: const Icon(Icons.event_busy, color: AppColors.error, size: 20),
+                      leading: const Icon(
+                        Icons.event_busy,
+                        color: AppColors.error,
+                        size: 20,
+                      ),
                       title: Text(
                         '${d.date.day}/${d.date.month}/${d.date.year}',
-                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13,
+                        ),
                       ),
-                      subtitle: d.reason != null ? Text(d.reason!, style: const TextStyle(fontSize: 11)) : null,
+                      subtitle: d.reason != null
+                          ? Text(
+                              d.reason!,
+                              style: const TextStyle(fontSize: 11),
+                            )
+                          : null,
                       trailing: IconButton(
-                        icon: const Icon(Icons.delete_outline, color: AppColors.error, size: 18),
-                        onPressed: () => d.id != null ? _removeDayOff(d.id!) : null,
+                        icon: const Icon(
+                          Icons.delete_outline,
+                          color: AppColors.error,
+                          size: 18,
+                        ),
+                        onPressed: () =>
+                            d.id != null ? _removeDayOff(d.id!) : null,
                       ),
                     );
                   },

@@ -129,6 +129,12 @@ ALTER TABLE public.doctors ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Lectura de doctores" ON public.doctors;
 CREATE POLICY "Lectura de doctores" ON public.doctors
   FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Inserción de doctores" ON public.doctors;
+CREATE POLICY "Inserción de doctores" ON public.doctors
+  FOR INSERT TO authenticated WITH CHECK (true);
+DROP POLICY IF EXISTS "Actualización de doctores" ON public.doctors;
+CREATE POLICY "Actualización de doctores" ON public.doctors
+  FOR UPDATE TO authenticated USING (true);
 
 -- 5. SERVICES — Catálogo de servicios
 CREATE TABLE IF NOT EXISTS public.services (

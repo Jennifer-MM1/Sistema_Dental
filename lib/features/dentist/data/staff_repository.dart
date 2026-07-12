@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:sistema_dental/core/supabase/supabase_provider.dart';
@@ -24,21 +25,35 @@ class StaffRepository {
   /// Incluye datos del perfil y del registro en la tabla doctors si existe.
   Future<List<StaffMember>> getStaffInClinic(String clinicId) async {
     try {
-      // Traer membresías con perfil
       final memberships = await _client
           .from('clinic_memberships')
-          .select('user_id, clinic_id, role_in_clinic, profiles(name)')
+          .select('user_id, clinic_id, role_in_clinic')
           .eq('clinic_id', clinicId)
           .inFilter('role_in_clinic', ['owner', 'dentist', 'secretary'])
           .eq('is_active', true);
 
-      // Traer registros de doctors por clínica para enriquecer
+      final userIds = memberships
+          .map<String>((m) => m['user_id'] as String)
+          .toSet()
+          .toList();
+
+      final profiles = userIds.isEmpty
+          ? <Map<String, dynamic>>[]
+          : await _client
+                .from('profiles')
+                .select('id, name')
+                .inFilter('id', userIds);
+
       final doctorsRecords = await _client
           .from('doctors')
           .select('id, user_id, specialty, cabin_assigned, is_available')
           .eq('clinic_id', clinicId);
 
-      // Indexar doctors por user_id para lookup rápido
+      final profilesByUserId = <String, Map<String, dynamic>>{};
+      for (final p in profiles) {
+        profilesByUserId[p['id'] as String] = p;
+      }
+
       final doctorsByUserId = <String, Map<String, dynamic>>{};
       for (final d in doctorsRecords) {
         doctorsByUserId[d['user_id'] as String] = d;
@@ -47,10 +62,12 @@ class StaffRepository {
       return memberships.map<StaffMember>((m) {
         final userId = m['user_id'] as String;
         final enriched = Map<String, dynamic>.from(m);
+        enriched['profiles'] = profilesByUserId[userId];
         enriched['doctors'] = doctorsByUserId[userId];
         return StaffMember.fromMap(enriched);
       }).toList();
     } catch (e) {
+      debugPrint('Error loading staff in clinic: $e');
       return [];
     }
   }
@@ -88,16 +105,21 @@ class StaffRepository {
 
       if (existing != null) return existing['id'] as String;
 
-      final result = await _client.from('doctors').insert({
-        'user_id': userId,
-        'clinic_id': clinicId,
-        'specialty': specialty,
-        'cabin_assigned': cabin,
-        'is_available': true,
-      }).select('id').single();
+      final result = await _client
+          .from('doctors')
+          .insert({
+            'user_id': userId,
+            'clinic_id': clinicId,
+            'specialty': specialty,
+            'cabin_assigned': cabin,
+            'is_available': true,
+          })
+          .select('id')
+          .single();
 
       return result['id'] as String;
-    } catch (_) {
+    } catch (e) {
+      debugPrint('Error ensuring doctor record: $e');
       return null;
     }
   }
@@ -144,16 +166,13 @@ class StaffRepository {
           return DoctorDaySchedule.fromMap(existing[i]!);
         }
         // Días por defecto: lunes a viernes activos, fines de semana libres
-        return DoctorDaySchedule(
-          dayOfWeek: i,
-          isWorkingDay: i >= 1 && i <= 5,
-        );
+        return DoctorDaySchedule(dayOfWeek: i, isWorkingDay: i >= 1 && i <= 5);
       });
     } catch (_) {
-      return List.generate(7, (i) => DoctorDaySchedule(
-        dayOfWeek: i,
-        isWorkingDay: i >= 1 && i <= 5,
-      ));
+      return List.generate(
+        7,
+        (i) => DoctorDaySchedule(dayOfWeek: i, isWorkingDay: i >= 1 && i <= 5),
+      );
     }
   }
 
@@ -168,10 +187,9 @@ class StaffRepository {
           .map((s) => s.toMap(doctorUserId, clinicId))
           .toList();
 
-      await _client.from('doctor_schedules').upsert(
-        rows,
-        onConflict: 'doctor_user_id,clinic_id,day_of_week',
-      );
+      await _client
+          .from('doctor_schedules')
+          .upsert(rows, onConflict: 'doctor_user_id,clinic_id,day_of_week');
       return true;
     } catch (_) {
       return false;
