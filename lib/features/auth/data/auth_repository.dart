@@ -103,6 +103,16 @@ class AuthRepository {
         'is_active': true,
       });
 
+      // Si el usuario ya tenía fichas creadas antes de vincularse,
+      // asignarlas a la clínica para que no se mezclen con otras clínicas.
+      if (role == 'client') {
+        await _client
+            .from('patients')
+            .update({'clinic_id': codeData['clinic_id']})
+            .eq('profile_id', user.id)
+            .filter('clinic_id', 'is', null);
+      }
+
       return role;
     } catch (e) {
       return null;

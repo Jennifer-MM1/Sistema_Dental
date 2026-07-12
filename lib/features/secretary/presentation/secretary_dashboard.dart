@@ -535,25 +535,14 @@ class _PatientsManagementViewState extends State<PatientsManagementView> {
       
       final clinicId = membership['clinic_id'];
 
-      // Fetch users who are clients in this clinic
-      final clientsRes = await client
-          .from('clinic_memberships')
-          .select('user_id')
-          .eq('clinic_id', clinicId)
-          .eq('role_in_clinic', 'client');
+      final patientsRes = await client
+          .from('patients')
+          .select('*, profiles(phone)')
+          .eq('clinic_id', clinicId);
 
-      if (clientsRes.isNotEmpty) {
-        final userIds = clientsRes.map((c) => c['user_id']).toList();
-        
-        final patientsRes = await client
-            .from('patients')
-            .select('*, profiles(phone)')
-            .inFilter('profile_id', userIds);
-            
-        setState(() {
-          _patients = patientsRes;
-        });
-      }
+      setState(() {
+        _patients = patientsRes;
+      });
     } catch (e) {
       debugPrint('Error fetch patients: $e');
     } finally {

@@ -14,6 +14,7 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+        isCoreLibraryDesugaringEnabled = true
     }
 
     defaultConfig {
@@ -47,6 +48,7 @@ flutter {
 }
 
 dependencies {
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
     // Firebase BoM: gestiona versiones compatibles automáticamente
     implementation(platform("com.google.firebase:firebase-bom:34.0.0"))
     // Firebase Cloud Messaging (notificaciones push)

@@ -56,6 +56,7 @@ CREATE POLICY "Inserción de perfiles" ON public.profiles
 -- 2.5 PATIENTS — Fichas médicas (Multi-paciente por cuenta)
 CREATE TABLE IF NOT EXISTS public.patients (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  clinic_id UUID REFERENCES public.clinics(id) ON DELETE CASCADE,
   profile_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE NOT NULL,
   first_name TEXT NOT NULL,
   last_name TEXT NOT NULL,
@@ -64,6 +65,28 @@ CREATE TABLE IF NOT EXISTS public.patients (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 ALTER TABLE public.patients ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.patients
+  ADD COLUMN IF NOT EXISTS clinic_id UUID REFERENCES public.clinics(id) ON DELETE CASCADE;
+CREATE INDEX IF NOT EXISTS idx_patients_clinic_id ON public.patients(clinic_id);
+CREATE INDEX IF NOT EXISTS idx_patients_profile_clinic ON public.patients(profile_id, clinic_id);
+UPDATE public.patients p
+SET clinic_id = (
+  SELECT cm.clinic_id
+  FROM public.clinic_memberships cm
+  WHERE cm.user_id = p.profile_id
+    AND cm.role_in_clinic = 'client'
+    AND cm.is_active = true
+  ORDER BY cm.created_at ASC
+  LIMIT 1
+)
+WHERE p.clinic_id IS NULL
+  AND EXISTS (
+    SELECT 1
+    FROM public.clinic_memberships cm
+    WHERE cm.user_id = p.profile_id
+      AND cm.role_in_clinic = 'client'
+      AND cm.is_active = true
+  );
 DROP POLICY IF EXISTS "Pacientes visibles para la clínica y el perfil dueño" ON public.patients;
 CREATE POLICY "Pacientes visibles para la clínica y el perfil dueño" ON public.patients
   FOR SELECT TO authenticated USING (true);

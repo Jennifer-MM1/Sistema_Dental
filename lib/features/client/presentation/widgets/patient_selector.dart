@@ -203,7 +203,21 @@ class _AddFamilyMemberDialogState extends ConsumerState<_AddFamilyMemberDialog> 
     }
 
     final repo = ref.read(patientRepositoryProvider);
+    final selectedPatient = ref.read(selectedPatientProvider);
+    final clinicId = selectedPatient?.clinicId ?? await repo.getPrimaryClinicIdForUser(currentUser.id);
+
+    if (clinicId == null) {
+      setState(() => _isLoading = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Primero vincula tu cuenta a una clínica.'), backgroundColor: AppColors.error),
+        );
+      }
+      return;
+    }
+
     final patient = await repo.createPatient(
+      clinicId: clinicId,
       profileId: currentUser.id,
       firstName: _firstName,
       lastName: _lastName,

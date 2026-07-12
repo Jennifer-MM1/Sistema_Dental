@@ -32,13 +32,18 @@ class PatientRepository {
 
   PatientRepository(this._supabase);
 
-  Future<List<Patient>> getPatientsByProfileId(String profileId) async {
+  Future<List<Patient>> getPatientsByProfileId(String profileId, {String? clinicId}) async {
     try {
-      final response = await _supabase
+      var query = _supabase
           .from('patients')
           .select()
-          .eq('profile_id', profileId)
-          .order('created_at', ascending: true);
+          .eq('profile_id', profileId);
+
+      if (clinicId != null) {
+        query = query.eq('clinic_id', clinicId);
+      }
+
+      final response = await query.order('created_at', ascending: true);
 
       return (response as List).map((map) => Patient.fromMap(map)).toList();
     } catch (e) {
@@ -48,6 +53,7 @@ class PatientRepository {
   }
 
   Future<Patient?> createPatient({
+    required String clinicId,
     required String profileId,
     required String firstName,
     required String lastName,
@@ -56,6 +62,7 @@ class PatientRepository {
   }) async {
     try {
       final response = await _supabase.from('patients').insert({
+        'clinic_id': clinicId,
         'profile_id': profileId,
         'first_name': firstName,
         'last_name': lastName,
@@ -66,6 +73,23 @@ class PatientRepository {
       return Patient.fromMap(response);
     } catch (e) {
       print('Error al crear paciente: $e');
+      return null;
+    }
+  }
+
+  Future<String?> getPrimaryClinicIdForUser(String userId) async {
+    try {
+      final response = await _supabase
+          .from('clinic_memberships')
+          .select('clinic_id')
+          .eq('user_id', userId)
+          .eq('is_active', true)
+          .limit(1)
+          .maybeSingle();
+
+      return response?['clinic_id'] as String?;
+    } catch (e) {
+      print('Error al obtener clínica del usuario: $e');
       return null;
     }
   }

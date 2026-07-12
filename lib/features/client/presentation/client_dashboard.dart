@@ -148,18 +148,18 @@ class _ClientHomeViewState extends ConsumerState<ClientHomeView> {
     if (user == null) return;
 
     try {
-      final patientRes = await client.from('patients').select('id').eq('profile_id', user.id).limit(1);
+      final patientRes = await client.from('patients').select('id').eq('profile_id', user.id);
       if (patientRes.isEmpty) {
         setState(() => _isLoading = false);
         return;
       }
 
-      final patientId = patientRes[0]['id'];
+      final patientIds = patientRes.map((p) => p['id']).toList();
 
       final apptRes = await client
           .from('appointments')
           .select('*, doctors(profiles(name)), services(service_name)')
-          .eq('patient_id', patientId)
+          .inFilter('patient_id', patientIds)
           .gte('date_time', DateTime.now().toUtc().toIso8601String())
           .order('date_time', ascending: true)
           .limit(1);
@@ -313,18 +313,18 @@ class _ClientRecordsViewState extends State<ClientRecordsView> {
     if (user == null) return;
 
     try {
-      final patientRes = await client.from('patients').select('id').eq('profile_id', user.id).limit(1);
+      final patientRes = await client.from('patients').select('id').eq('profile_id', user.id);
       if (patientRes.isEmpty) {
         setState(() => _isLoading = false);
         return;
       }
 
-      final patientId = patientRes[0]['id'];
+      final patientIds = patientRes.map((p) => p['id']).toList();
 
       final apptRes = await client
           .from('appointments')
           .select('*, doctors(profiles(name)), services(service_name)')
-          .eq('patient_id', patientId)
+          .inFilter('patient_id', patientIds)
           .eq('status', 'completed')
           .order('date_time', ascending: false);
 

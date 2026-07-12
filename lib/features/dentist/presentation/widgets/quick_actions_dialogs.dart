@@ -57,6 +57,7 @@ class _AddPatientDialogState extends State<AddPatientDialog> {
     try {
       final client = Supabase.instance.client;
       await client.from('patients').insert({
+        'clinic_id': widget.clinicId,
         'profile_id': _selectedClientId,
         'first_name': _firstNameController.text.trim(),
         'last_name': _lastNameController.text.trim(),
@@ -201,29 +202,19 @@ class _ScheduleAppointmentDialogState extends State<ScheduleAppointmentDialog> {
   Future<void> _fetchData() async {
     final client = Supabase.instance.client;
     try {
-      // 1. Fetch patients
-      final clientsRes = await client
-          .from('clinic_memberships')
-          .select('user_id')
-          .eq('clinic_id', widget.clinicId)
-          .eq('role_in_clinic', 'client');
-          
-      if (clientsRes.isNotEmpty) {
-        final clientIds = clientsRes.map((c) => c['user_id']).toList();
-        final patientsRes = await client
-            .from('patients')
-            .select('id, first_name, last_name, profiles(name)')
-            .inFilter('profile_id', clientIds);
-        _patients = List<Map<String, dynamic>>.from(patientsRes);
-      }
+      // 1. Fetch patients explicitly attached to this clinic
+      final patientsRes = await client
+          .from('patients')
+          .select('id, first_name, last_name, profiles(name)')
+          .eq('clinic_id', widget.clinicId);
+      _patients = List<Map<String, dynamic>>.from(patientsRes);
       
       // 2. Fetch doctors
       final docsRes = await client
-          .from('clinic_memberships')
-          .select('user_id, profiles(name)')
+          .from('doctors')
+          .select('id, profiles(name)')
           .eq('clinic_id', widget.clinicId)
-          .inFilter('role_in_clinic', ['dentist', 'owner'])
-          .eq('is_active', true);
+          .eq('is_available', true);
       _doctors = List<Map<String, dynamic>>.from(docsRes);
       
       // 3. Fetch services
@@ -305,7 +296,7 @@ class _ScheduleAppointmentDialogState extends State<ScheduleAppointmentDialog> {
                       value: _selectedDoctorId,
                       items: _doctors.map((d) {
                         return DropdownMenuItem(
-                          value: d['user_id'] as String,
+                          value: d['id'] as String,
                           child: Text('Dr. ${d['profiles']['name']}'),
                         );
                       }).toList(),

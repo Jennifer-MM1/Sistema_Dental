@@ -3,6 +3,7 @@
 /// Modelo que representa una ficha de paciente (multi-paciente por cuenta).
 class Patient {
   final String id;
+  final String? clinicId; // Refers to clinics(id)
   final String profileId; // Refers to profiles(id)
   final String firstName;
   final String lastName;
@@ -12,6 +13,7 @@ class Patient {
 
   const Patient({
     required this.id,
+    this.clinicId,
     required this.profileId,
     required this.firstName,
     required this.lastName,
@@ -25,6 +27,7 @@ class Patient {
   factory Patient.fromMap(Map<String, dynamic> map) {
     return Patient(
       id: map['id'] as String,
+      clinicId: map['clinic_id'] as String?,
       profileId: map['profile_id'] as String,
       firstName: map['first_name'] as String,
       lastName: map['last_name'] as String,
@@ -39,6 +42,7 @@ class Patient {
   Map<String, dynamic> toMap() {
     return {
       'id': id,
+      'clinic_id': clinicId,
       'profile_id': profileId,
       'first_name': firstName,
       'last_name': lastName,
@@ -48,6 +52,7 @@ class Patient {
   }
 
   Patient copyWith({
+    String? clinicId,
     String? firstName,
     String? lastName,
     DateTime? dateOfBirth,
@@ -55,6 +60,7 @@ class Patient {
   }) {
     return Patient(
       id: id,
+      clinicId: clinicId ?? this.clinicId,
       profileId: profileId,
       firstName: firstName ?? this.firstName,
       lastName: lastName ?? this.lastName,

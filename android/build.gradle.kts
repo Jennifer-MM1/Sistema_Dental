@@ -1,8 +1,3 @@
-plugins {
-    // Complemento de Google services para hacer accesible google-services.json a los SDKs de Firebase
-    id("com.google.gms.google-services") version "4.5.0" apply false
-}
-
 allprojects {
     repositories {
         google()
