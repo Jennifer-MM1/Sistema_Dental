@@ -8,6 +8,7 @@ class Appointment {
   final String status;
   final String? queueCode;
   final String? medicalNotes;
+  final bool reminderSent;
 
   // Joined fields
   final String? doctorName;
@@ -25,6 +26,7 @@ class Appointment {
     required this.status,
     this.queueCode,
     this.medicalNotes,
+    this.reminderSent = false,
     this.doctorName,
     this.patientName,
     this.serviceName,
@@ -60,6 +62,7 @@ class Appointment {
       status: map['status'] as String,
       queueCode: map['queue_code'] as String?,
       medicalNotes: map['medical_notes'] as String?,
+      reminderSent: map['reminder_sent'] as bool? ?? false,
       doctorName: docName,
       patientName: patName,
       serviceName: servName,

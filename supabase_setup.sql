@@ -162,6 +162,7 @@ CREATE TABLE IF NOT EXISTS public.appointments (
     CHECK (status IN ('upcoming', 'in_lobby', 'in_treatment', 'completed', 'cancelled')),
   queue_code TEXT,
   medical_notes TEXT,
+  reminder_sent BOOLEAN DEFAULT false,
   updated_at TIMESTAMPTZ DEFAULT NOW(),
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -340,3 +341,116 @@ DROP TRIGGER IF EXISTS update_doctor_schedules_updated_at ON public.doctor_sched
 CREATE TRIGGER update_doctor_schedules_updated_at
   BEFORE UPDATE ON public.doctor_schedules
   FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+
+-- ============================================================
+-- PASO 5: HISTORIAL CLÍNICO Y RECETAS DIGITALES
+-- ============================================================
+
+-- 11. CLINICAL_NOTES — Notas clínicas por cita
+CREATE TABLE IF NOT EXISTS public.clinical_notes (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  appointment_id UUID REFERENCES public.appointments(id) ON DELETE CASCADE,
+  patient_id UUID REFERENCES public.patients(id) ON DELETE CASCADE NOT NULL,
+  doctor_id UUID REFERENCES public.doctors(id) ON DELETE CASCADE NOT NULL,
+  clinic_id UUID REFERENCES public.clinics(id) ON DELETE CASCADE NOT NULL,
+  diagnosis TEXT,
+  treatment_performed TEXT,
+  observations TEXT,
+  tooth_numbers INT[] DEFAULT '{}',
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+ALTER TABLE public.clinical_notes ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Lectura de notas clínicas" ON public.clinical_notes;
+CREATE POLICY "Lectura de notas clínicas" ON public.clinical_notes
+  FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Inserción de notas clínicas" ON public.clinical_notes;
+CREATE POLICY "Inserción de notas clínicas" ON public.clinical_notes
+  FOR INSERT TO authenticated WITH CHECK (true);
+DROP POLICY IF EXISTS "Actualización de notas clínicas" ON public.clinical_notes;
+CREATE POLICY "Actualización de notas clínicas" ON public.clinical_notes
+  FOR UPDATE TO authenticated USING (true);
+
+-- 12. PRESCRIPTIONS — Recetas digitales
+CREATE TABLE IF NOT EXISTS public.prescriptions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  clinical_note_id UUID REFERENCES public.clinical_notes(id) ON DELETE CASCADE NOT NULL,
+  patient_id UUID REFERENCES public.patients(id) ON DELETE CASCADE NOT NULL,
+  doctor_id UUID REFERENCES public.doctors(id) ON DELETE CASCADE NOT NULL,
+  clinic_id UUID REFERENCES public.clinics(id) ON DELETE CASCADE NOT NULL,
+  medications JSONB NOT NULL DEFAULT '[]',
+  instructions TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+ALTER TABLE public.prescriptions ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Lectura de recetas" ON public.prescriptions;
+CREATE POLICY "Lectura de recetas" ON public.prescriptions
+  FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Inserción de recetas" ON public.prescriptions;
+CREATE POLICY "Inserción de recetas" ON public.prescriptions
+  FOR INSERT TO authenticated WITH CHECK (true);
+DROP POLICY IF EXISTS "Actualización de recetas" ON public.prescriptions;
+CREATE POLICY "Actualización de recetas" ON public.prescriptions
+  FOR UPDATE TO authenticated USING (true);
+
+-- ============================================================
+-- PASO 6: HORARIOS Y DÍAS LIBRES DE DOCTORES
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS public.doctor_schedules (
+  doctor_user_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE,
+  clinic_id UUID REFERENCES public.clinics(id) ON DELETE CASCADE,
+  day_of_week INT CHECK (day_of_week >= 0 AND day_of_week <= 6),
+  is_working_day BOOLEAN DEFAULT true,
+  start_time TEXT DEFAULT '09:00',
+  end_time TEXT DEFAULT '18:00',
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  PRIMARY KEY (doctor_user_id, clinic_id, day_of_week)
+);
+ALTER TABLE public.doctor_schedules ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Lectura de horarios de doctores" ON public.doctor_schedules;
+CREATE POLICY "Lectura de horarios de doctores" ON public.doctor_schedules FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Edición de horarios de doctores" ON public.doctor_schedules;
+CREATE POLICY "Edición de horarios de doctores" ON public.doctor_schedules FOR ALL TO authenticated USING (true) WITH CHECK (true);
+
+CREATE TABLE IF NOT EXISTS public.doctor_days_off (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  doctor_user_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE NOT NULL,
+  clinic_id UUID REFERENCES public.clinics(id) ON DELETE CASCADE NOT NULL,
+  date DATE NOT NULL,
+  reason TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+ALTER TABLE public.doctor_days_off ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Lectura de días libres" ON public.doctor_days_off;
+CREATE POLICY "Lectura de días libres" ON public.doctor_days_off FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Edición de días libres" ON public.doctor_days_off;
+CREATE POLICY "Edición de días libres" ON public.doctor_days_off FOR ALL TO authenticated USING (true) WITH CHECK (true);
+
+-- ============================================================
+-- PASO 7: COLUMNA reminder_sent EN APPOINTMENTS
+-- ============================================================
+ALTER TABLE public.appointments
+  ADD COLUMN IF NOT EXISTS reminder_sent BOOLEAN DEFAULT false;
+
+-- ============================================================
+-- PASO 8: CRON JOB PARA RECORDATORIOS AUTOMÁTICOS
+-- (Requiere habilitar las extensiones pg_cron y pg_net en Supabase Dashboard)
+-- Dashboard → Database → Extensions → Buscar pg_cron → Enable
+-- Dashboard → Database → Extensions → Buscar pg_net → Enable
+-- ============================================================
+-- Descomentar las siguientes líneas después de habilitar pg_cron y pg_net:
+--
+-- SELECT cron.schedule(
+--   'remind-upcoming-appointments',
+--   '0 * * * *',  -- Cada hora en punto
+--   $$
+--   SELECT net.http_post(
+--     url := (SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = 'supabase_url') || '/functions/v1/remind-upcoming-appointments',
+--     headers := jsonb_build_object(
+--       'Content-Type', 'application/json',
+--       'Authorization', 'Bearer ' || (SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = 'service_role_key')
+--     ),
+--     body := '{}'::jsonb
+--   );
+--   $$
+-- );

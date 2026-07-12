@@ -9,6 +9,7 @@ import 'package:file_picker/file_picker.dart' as fp;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:sistema_dental/features/shared/data/appointment_repository.dart';
 import 'package:sistema_dental/features/shared/presentation/user_profile_view.dart';
+import 'package:sistema_dental/features/dentist/presentation/widgets/clinical_history_view.dart';
 import 'package:intl/intl.dart';
 
 class DentistDashboard extends StatefulWidget {
@@ -131,7 +132,8 @@ class _DentistDashboardState extends State<DentistDashboard> {
           _buildSidebarItem(3, Icons.people, 'Clientes Asociados'),
           _buildSidebarItem(4, Icons.badge, 'Personal y Consultorios'),
           _buildSidebarItem(5, Icons.qr_code_2, 'Código QR Clínica'),
-          _buildSidebarItem(6, Icons.settings_outlined, 'Configuración'),
+          _buildSidebarItem(6, Icons.medical_information, 'Historial Clínico'),
+          _buildSidebarItem(7, Icons.settings_outlined, 'Configuración'),
           const Spacer(),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16.0),
@@ -157,7 +159,7 @@ class _DentistDashboardState extends State<DentistDashboard> {
             padding: const EdgeInsets.all(16.0),
             child: InkWell(
               onTap: () {
-                setState(() => _selectedIndex = 6);
+                setState(() => _selectedIndex = 7);
                 if (MediaQuery.of(context).size.width <= 900) {
                   Navigator.of(context).pop();
                 }
@@ -401,6 +403,8 @@ class _DentistDashboardState extends State<DentistDashboard> {
       case 5:
         return const QRCodeView(); // Código QR Único
       case 6:
+        return const ClinicalHistoryView(); // Historial Clínico
+      case 7:
         return const SettingsView();
       default:
         return const Center(child: Text('Vista en desarrollo...'));
@@ -729,7 +733,7 @@ class _DashboardViewState extends State<DashboardView> {
 
   Future<void> _uploadXRay() async {
     try {
-      fp.FilePickerResult? result = await fp.FilePicker.pickFiles(
+      fp.FilePickerResult? result = await fp.FilePicker.platform.pickFiles(
         type: fp.FileType.image,
         allowMultiple: false,
       );

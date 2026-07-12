@@ -31,7 +31,8 @@ La aplicación adapta su flujo de trabajo y presentación visual a tres perfiles
 - **Lenguaje**: [Dart](https://dart.dev)
 - **Gestor de Estado**: [Riverpod (flutter_riverpod)](https://riverpod.dev) para un manejo de estado robusto y testeable.
 - **Navegación**: [GoRouter](https://pub.dev/packages/go_router) para rutas declarativas y soporte de deep linking.
-- **Base de Datos y Autenticación**: [Firebase Suite](https://firebase.google.com/) (Auth, Firestore y Core).
+- **Base de Datos y Autenticación**: [Supabase](https://supabase.com/) (PostgreSQL Database, Auth, Realtime).
+- **Notificaciones Push**: [Firebase Cloud Messaging (FCM)](https://firebase.google.com/) para alertas móviles.
 - **Diseño Visual**:
   - Fuente: [Google Fonts - Inter](https://fonts.google.com/specimen/Inter)
   - Temas dinámicos y paletas de colores basadas en HSL (en `core/theme`).

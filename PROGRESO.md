@@ -50,8 +50,7 @@ El sistema está diseñado en **Flutter** para ser multidispositivo, adaptándos
   * **Diseño:** Optimizado para pantallas horizontales amplias (barra de navegación lateral persistente, tablas organizadas y flujos de trabajo paralelos).
   * **Notificaciones:** Integradas a través del canal en tiempo real de Supabase (`Realtime`), garantizando actualizaciones al instante sin depender de sistemas de push tradicionales de celular.
 * **Relojes Inteligentes (Smartwatches - Wear OS / watchOS):**
-  * **Modo Espejo (Mirroring):** Funcional por defecto. Al recibir notificaciones push en el teléfono enlazado, se duplican directamente en el reloj del usuario sin configuraciones extras.
-  * **Aplicación Nativa:** Infraestructura lista en base de datos (`linked_devices` soporta tipo `watch_os`) y Edge Function preparada. Resta desarrollar la mini-interfaz especializada para relojes dentro de Flutter.
+  * **Modo Espejo (Mirroring):** Funcional por defecto. Al recibir notificaciones push en el teléfono enlazado, se duplican directamente en el reloj del usuario. Se determinó que este comportamiento es suficiente, por lo que se descarta desarrollar una aplicación o interfaz dedicada para el reloj.
 
 ---
 
@@ -59,18 +58,12 @@ El sistema está diseñado en **Flutter** para ser multidispositivo, adaptándos
 
 A partir de la base actual, se pueden implementar las siguientes características para enriquecer el software:
 
-### 1. Integración con Smartwatches y Wearables
-* La tabla `linked_devices` en Supabase cuenta con soporte para registrar dispositivos de tipo `watch_os`. Se puede extender la aplicación cliente en Flutter para enviar alertas de turnos directamente a relojes inteligentes.
-
-### 2. Recordatorios de Citas Automatizados (Cron Jobs / Supabase pg_net)
+### 1. Recordatorios de Citas Automatizados (Cron Jobs / Supabase pg_net)
 * Implementar recordatorios automáticos (por ejemplo, 24 horas antes de la cita).
 * Esto se puede realizar mediante Edge Functions que se ejecuten periódicamente (ej. cada hora) para buscar citas próximas y disparar notificaciones push automáticas a los pacientes correspondientes.
 
-### 3. Historial Clínico y Recetas Digitales
+### 2. Historial Clínico y Recetas Digitales
 * Crear un módulo para que los dentistas registren notas de evolución, odontogramas interactivos y generen recetas en formato PDF que los pacientes puedan descargar desde su respectivo panel.
 
-### 4. Chat Interno de la Clínica (Dentistas ↔️ Recepción)
-* Aprovechar las capacidades en tiempo real de Supabase (`Realtime`) para crear un canal de chat ágil entre la recepción (secretarias) y los odontólogos en los consultorios, facilitando avisos internos sin salir de la app.
-
-### 5. Configuración de Notificaciones en iOS
+### 3. Configuración de Notificaciones en iOS
 * Actualmente la app está lista en Android. Para iOS, se requiere configurar las llaves APNs en el portal de desarrolladores de Apple y vincular los certificados en Firebase Console para habilitar las alertas push en iPhones.

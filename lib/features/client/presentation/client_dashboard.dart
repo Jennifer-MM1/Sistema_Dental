@@ -8,6 +8,7 @@ import 'package:sistema_dental/features/client/data/notification_repository.dart
 import 'package:sistema_dental/features/client/data/patient_repository.dart';
 import 'package:sistema_dental/features/shared/data/appointment_repository.dart';
 import 'package:sistema_dental/features/client/presentation/widgets/patient_selector.dart';
+import 'package:sistema_dental/features/client/presentation/widgets/patient_clinical_history_view.dart';
 import 'package:sistema_dental/core/models/appointment.dart';
 import 'package:intl/intl.dart';
 
@@ -101,7 +102,7 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
           BottomNavigationBarItem(icon: Icon(Icons.calendar_today), label: 'Schedule'),
-          BottomNavigationBarItem(icon: Icon(Icons.folder_open), label: 'Records'),
+          BottomNavigationBarItem(icon: Icon(Icons.folder_open), label: 'Historial'),
           BottomNavigationBarItem(icon: Icon(Icons.person_outline), label: 'Profile'),
         ],
       ),
@@ -112,7 +113,7 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
     if (_selectedIndex == 1) {
       return const ClientScheduleView();
     } else if (_selectedIndex == 2) {
-      return const ClientRecordsView();
+      return const PatientClinicalHistoryView();
     } else if (_selectedIndex == 3) {
       return const ClientProfileView();
     }
@@ -698,7 +699,7 @@ class ClientProfileView extends ConsumerWidget {
 
     final user = userAsync.value;
     final userName = user?.name ?? 'Paciente';
-    final userEmail = user?.email ?? 'correo@email.com';
+    final userEmail = user?.email ?? '';
     final userId = user?.id != null ? (user!.id.length > 8 ? user.id.substring(0, 8) : user.id) : 'DS-2026-PEND';
 
     final linkedDevices = devicesAsync.value ?? [];

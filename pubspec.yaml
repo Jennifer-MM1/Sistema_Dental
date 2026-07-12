@@ -40,11 +40,14 @@ dependencies:
   supabase_flutter: ^2.6.0
   flutter_dotenv: ^5.2.1
   intl: ^0.20.3
-  file_picker: ^11.0.2
+  file_picker: 10.3.10
   # ── Notificaciones Push ──────────────────────────────────────
   firebase_core: ^3.13.1
   firebase_messaging: ^15.2.5
   flutter_local_notifications: ^18.0.1
+  # ── Recetas en PDF ───────────────────────────────────────────
+  pdf: ^3.11.2
+  printing: ^5.14.2
 
 dev_dependencies:
   flutter_test:

@@ -12,43 +12,59 @@ import 'package:sistema_dental/core/notifications/fcm_service.dart';
 import 'firebase_options.dart'; // Generado por FlutterFire CLI
 
 void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
+  print("=== INICIANDO APP ===");
+  try {
+    WidgetsFlutterBinding.ensureInitialized();
+    print("[1/4] WidgetsFlutterBinding inicializado.");
+  } catch (e) {
+    print("ERROR en WidgetsFlutterBinding: $e");
+  }
 
+  // 1. Cargar variables de entorno
   try {
     await dotenv.load(fileName: '.env');
+    print("[2/4] Variables de entorno (.env) cargadas.");
   } catch (e) {
     debugPrint('[Startup] No se pudo cargar .env: $e');
   }
 
+  // 2. Inicializar Firebase
   var firebaseReady = false;
   try {
+    print("Inicializando Firebase...");
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     ).timeout(const Duration(seconds: 8));
     firebaseReady = true;
+    print("[3/4] Firebase inicializado con éxito.");
   } catch (e) {
     debugPrint('[Startup] Firebase no inició: $e');
   }
 
+  // 3. Inicializar Supabase
   final supabaseUrl = dotenv.env['SUPABASE_URL'] ?? '';
   final supabaseAnonKey = dotenv.env['SUPABASE_ANON_KEY'] ?? '';
 
   if (supabaseUrl.isEmpty || supabaseAnonKey.isEmpty) {
+    print("ERROR: SUPABASE_URL o SUPABASE_ANON_KEY vacíos en .env");
     runApp(const StartupErrorApp());
     return;
   }
 
   try {
+    print("Inicializando Supabase...");
     await Supabase.initialize(
       url: supabaseUrl,
       publishableKey: supabaseAnonKey,
     ).timeout(const Duration(seconds: 8));
+    print("[4/4] Supabase inicializado con éxito.");
   } catch (e) {
     debugPrint('[Startup] Supabase no inició: $e');
     runApp(const StartupErrorApp());
     return;
   }
 
+  print("=== INICIALIZACIÓN COMPLETA - Lanzando MaterialApp ===");
   runApp(const ProviderScope(child: MyApp()));
 
   if (firebaseReady) {
