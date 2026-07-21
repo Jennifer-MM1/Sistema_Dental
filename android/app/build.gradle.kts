@@ -56,4 +56,6 @@ dependencies {
     implementation("com.google.firebase:firebase-messaging")
     // Firebase Analytics (requerido por el SDK base)
     implementation("com.google.firebase:firebase-analytics")
+    // Wear OS Data Layer para vincular telefono y reloj emparejados
+    implementation("com.google.android.gms:play-services-wearable:19.0.0")
 }

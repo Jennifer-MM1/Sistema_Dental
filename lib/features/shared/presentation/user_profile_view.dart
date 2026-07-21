@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:sistema_dental/core/notifications/fcm_service.dart';
 import 'package:sistema_dental/core/theme/app_colors.dart';
+import 'package:sistema_dental/core/wear/wear_link_service.dart';
 import 'package:sistema_dental/features/auth/providers/auth_providers.dart';
 import 'package:sistema_dental/features/client/data/notification_repository.dart';
+import 'package:sistema_dental/features/shared/data/settings_repository.dart';
 
 class UserProfileView extends ConsumerWidget {
   final String roleLabel;
@@ -15,60 +18,255 @@ class UserProfileView extends ConsumerWidget {
     this.avatarIcon = Icons.person,
   });
 
+  Future<void> _setMobileNotifications(
+    BuildContext context,
+    WidgetRef ref,
+    bool enabled,
+  ) async {
+    final override = ref.read(mobileNotificationsOverrideProvider.notifier);
+    enabled ? override.markEnabled() : override.markDisabled();
+
+    final success = enabled
+        ? await FcmService.instance.activateToken()
+        : await FcmService.instance.deactivateToken();
+
+    await ref.refresh(currentDeviceNotificationsProvider.future).then((_) {});
+    if (!success) override.clear();
+
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            success
+                ? enabled
+                      ? 'Recordatorios activados.'
+                      : 'Recordatorios desactivados.'
+                : 'No se pudo actualizar recordatorios.',
+          ),
+          backgroundColor: success ? null : AppColors.error,
+        ),
+      );
+    }
+  }
+
+  void _showEditProfileDialog(
+    BuildContext context,
+    WidgetRef ref, {
+    required String name,
+    required String phone,
+  }) {
+    final nameController = TextEditingController(text: name);
+    final phoneController = TextEditingController(text: phone);
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Información personal'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: nameController,
+              textCapitalization: TextCapitalization.words,
+              decoration: const InputDecoration(labelText: 'Nombre'),
+            ),
+            TextField(
+              controller: phoneController,
+              keyboardType: TextInputType.phone,
+              decoration: const InputDecoration(labelText: 'Teléfono'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              final success = await ref
+                  .read(settingsRepositoryProvider)
+                  .updateCurrentProfile(
+                    name: nameController.text,
+                    phone: phoneController.text,
+                  );
+              ref.invalidate(currentUserProvider);
+              if (context.mounted) {
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      success
+                          ? 'Perfil actualizado.'
+                          : 'No se pudo actualizar el perfil.',
+                    ),
+                    backgroundColor: success ? null : AppColors.error,
+                  ),
+                );
+              }
+            },
+            child: const Text('Guardar'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showChangePasswordDialog(BuildContext context, WidgetRef ref) {
+    final passwordController = TextEditingController();
+    final confirmController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Cambiar contraseña'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: passwordController,
+              obscureText: true,
+              decoration: const InputDecoration(labelText: 'Nueva contraseña'),
+            ),
+            TextField(
+              controller: confirmController,
+              obscureText: true,
+              decoration: const InputDecoration(labelText: 'Confirmar'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              final password = passwordController.text.trim();
+              final matches = password == confirmController.text.trim();
+              final success =
+                  matches &&
+                  await ref
+                      .read(settingsRepositoryProvider)
+                      .changePassword(password);
+
+              if (context.mounted) {
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      success
+                          ? 'Contraseña actualizada.'
+                          : 'La contraseña debe coincidir y tener al menos 6 caracteres.',
+                    ),
+                    backgroundColor: success ? null : AppColors.error,
+                  ),
+                );
+              }
+            },
+            child: const Text('Actualizar'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showBiometricInfo(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Biometría'),
+        content: const Text(
+          'La biometría depende del bloqueo seguro del dispositivo. DentalSync usará esa seguridad cuando el acceso biométrico esté habilitado para la app.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Entendido'),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _showLinkWatchDialog(BuildContext context, WidgetRef ref) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Vincular Smartwatch'),
+        title: const Text('Vincular Wear OS'),
         content: const Text(
-          'Elige la plataforma de tu reloj inteligente para recibir notificaciones de DentalSync.',
+          'DentalSync buscará relojes Wear OS emparejados con este teléfono y enviará tu sesión de forma automática.',
         ),
         actions: [
           Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              TextButton.icon(
-                icon: const Icon(Icons.watch, color: AppColors.primaryBlue),
-                label: const Text('Apple Watch (watchOS)'),
+              FilledButton.icon(
+                icon: const Icon(Icons.watch_rounded, color: Colors.white),
+                label: const Text('Vincular automáticamente'),
                 onPressed: () async {
-                  final repo = ref.read(notificationRepositoryProvider);
-                  await repo.registerDevice(
-                    deviceType: 'watch_os',
-                    pushToken:
-                        'mock_apple_watch_token_${ref.read(authRepositoryProvider).currentAuthUser?.id ?? ""}',
-                  );
-                  ref.invalidate(linkedDevicesProvider);
+                  final authUser = ref
+                      .read(authRepositoryProvider)
+                      .currentAuthUser;
+                  final link = await WearLinkService.instance
+                      .linkCurrentSession(role: roleLabel);
+
+                  if (link.success && authUser != null) {
+                    final repo = ref.read(notificationRepositoryProvider);
+                    await repo.registerDevice(
+                      deviceType: 'wear_os',
+                      pushToken: 'wear_os_companion_${authUser.id}',
+                    );
+                    ref
+                        .read(smartwatchLinkedOverrideProvider.notifier)
+                        .markLinked();
+                    await ref
+                        .refresh(linkedDevicesProvider.future)
+                        .then((_) {});
+                    ref.read(smartwatchLinkedOverrideProvider.notifier).clear();
+                  }
+
                   if (context.mounted) {
-                    Navigator.of(context).pop();
+                    Navigator.pop(context);
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Apple Watch vinculado correctamente.'),
-                        backgroundColor: AppColors.success,
+                      SnackBar(
+                        content: Text(
+                          link.success
+                              ? 'Sesión enviada. En el reloj toca Reintentar.'
+                              : link.message,
+                        ),
+                        backgroundColor: link.success
+                            ? AppColors.success
+                            : AppColors.error,
                       ),
                     );
                   }
                 },
               ),
+              const SizedBox(height: 8),
               TextButton.icon(
                 icon: const Icon(
-                  Icons.watch_rounded,
-                  color: AppColors.secondaryBlue,
+                  Icons.notifications_active_outlined,
+                  color: AppColors.primaryBlue,
                 ),
-                label: const Text('Wear OS (Android)'),
+                label: const Text('Registrar solo notificaciones'),
                 onPressed: () async {
+                  final authUser = ref
+                      .read(authRepositoryProvider)
+                      .currentAuthUser;
                   final repo = ref.read(notificationRepositoryProvider);
                   await repo.registerDevice(
                     deviceType: 'wear_os',
-                    pushToken:
-                        'mock_wear_os_token_${ref.read(authRepositoryProvider).currentAuthUser?.id ?? ""}',
+                    pushToken: 'wear_os_notifications_${authUser?.id ?? ""}',
                   );
-                  ref.invalidate(linkedDevicesProvider);
+                  await ref.refresh(linkedDevicesProvider.future).then((_) {});
+                  ref.read(smartwatchLinkedOverrideProvider.notifier).clear();
                   if (context.mounted) {
-                    Navigator.of(context).pop();
+                    Navigator.pop(context);
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
-                        content: Text('Wear OS vinculado correctamente.'),
+                        content: Text('Notificaciones Wear OS activadas.'),
                         backgroundColor: AppColors.success,
                       ),
                     );
@@ -76,11 +274,8 @@ class UserProfileView extends ConsumerWidget {
                 },
               ),
               TextButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text(
-                  'Cancelar',
-                  style: TextStyle(color: Colors.grey),
-                ),
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancelar'),
               ),
             ],
           ),
@@ -89,11 +284,7 @@ class UserProfileView extends ConsumerWidget {
     );
   }
 
-  void _showUnlinkWatchDialog(
-    BuildContext context,
-    WidgetRef ref,
-    List<Map<String, dynamic>> devices,
-  ) {
+  void _showUnlinkWatchDialog(BuildContext context, WidgetRef ref) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -103,27 +294,42 @@ class UserProfileView extends ConsumerWidget {
         ),
         actions: [
           TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
             onPressed: () async {
               final repo = ref.read(notificationRepositoryProvider);
-              for (final device in devices) {
-                await repo.deactivateDevice(device['device_type'] as String);
-              }
-              ref.invalidate(linkedDevicesProvider);
+              ref
+                  .read(smartwatchLinkedOverrideProvider.notifier)
+                  .markUnlinked();
+              final success = await repo.deactivateSmartwatchDevices();
+              final unlinkNotice = await WearLinkService.instance
+                  .unlinkCurrentSession();
+              final stillLinked = await repo.hasActiveSmartwatchDevice();
+              await ref.refresh(linkedDevicesProvider.future).then((_) {});
+              stillLinked
+                  ? ref.read(smartwatchLinkedOverrideProvider.notifier).clear()
+                  : ref
+                        .read(smartwatchLinkedOverrideProvider.notifier)
+                        .markUnlinked();
               if (context.mounted) {
-                Navigator.of(context).pop();
+                Navigator.pop(context);
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Dispositivos desvinculados.')),
+                  SnackBar(
+                    content: Text(
+                      success
+                          ? unlinkNotice.success
+                                ? 'Smartwatch desvinculado. Actualiza el reloj.'
+                                : 'Smartwatch desvinculado en la app. Actualiza o reinicia el reloj si sigue conectado.'
+                          : 'No se pudo desvincular el smartwatch.',
+                    ),
+                    backgroundColor: success ? null : AppColors.error,
+                  ),
                 );
               }
             },
-            child: const Text(
-              'Sí, desvincular',
-              style: TextStyle(color: AppColors.error),
-            ),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancelar'),
+            child: const Text('Desvincular'),
           ),
         ],
       ),
@@ -134,29 +340,45 @@ class UserProfileView extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final userAsync = ref.watch(currentUserProvider);
     final devicesAsync = ref.watch(linkedDevicesProvider);
+    final mobileNotificationsAsync = ref.watch(
+      currentDeviceNotificationsProvider,
+    );
+
     final user = userAsync.value;
     final linkedDevices = devicesAsync.value ?? [];
-    final isWatchLinked = linkedDevices.any(
+    final smartwatchOverride = ref.watch(smartwatchLinkedOverrideProvider);
+    final mobileNotificationsOverride = ref.watch(
+      mobileNotificationsOverrideProvider,
+    );
+
+    final watchDevices = linkedDevices.where(
       (device) =>
           device['device_type'] == 'watch_os' ||
           device['device_type'] == 'wear_os',
     );
+    final isWatchLinked = smartwatchOverride ?? watchDevices.isNotEmpty;
+    final areMobileNotificationsOn =
+        mobileNotificationsOverride ??
+        (mobileNotificationsAsync.value ?? false);
 
     final userName = user?.name ?? 'Usuario';
     final userEmail = user?.email ?? 'correo@email.com';
+    final userPhone = user?.phone ?? '';
     final userId = user?.id != null
         ? (user!.id.length > 8 ? user.id.substring(0, 8) : user.id)
         : 'DS-PEND';
 
     var watchSubtitle = 'Sincronización con dispositivos';
     if (isWatchLinked) {
-      final types = linkedDevices
+      final types = watchDevices
           .map((device) {
             final type = device['device_type'] as String;
             return type == 'watch_os' ? 'Apple Watch' : 'Wear OS';
           })
           .join(', ');
-      watchSubtitle = 'Conectado: $types';
+      watchSubtitle = types.isEmpty
+          ? 'Conectado: Wear OS'
+          : 'Conectado: $types';
     }
 
     return SingleChildScrollView(
@@ -164,23 +386,10 @@ class UserProfileView extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Stack(
-            alignment: Alignment.bottomRight,
-            children: [
-              CircleAvatar(
-                radius: 50,
-                backgroundColor: AppColors.lightBlueAccent,
-                child: Icon(avatarIcon, size: 58, color: AppColors.primaryBlue),
-              ),
-              Container(
-                padding: const EdgeInsets.all(6),
-                decoration: const BoxDecoration(
-                  color: AppColors.primaryBlue,
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(Icons.edit, color: Colors.white, size: 18),
-              ),
-            ],
+          CircleAvatar(
+            radius: 50,
+            backgroundColor: AppColors.lightBlueAccent,
+            child: Icon(avatarIcon, size: 58, color: AppColors.primaryBlue),
           ),
           const SizedBox(height: 16),
           Text(
@@ -204,7 +413,13 @@ class UserProfileView extends ConsumerWidget {
           _buildSettingsTile(
             icon: Icons.person_outline,
             title: 'Información Personal',
-            subtitle: 'Nombre, ID y contacto',
+            subtitle: userPhone.isEmpty ? 'Nombre, ID y contacto' : userPhone,
+            onTap: () => _showEditProfileDialog(
+              context,
+              ref,
+              name: userName,
+              phone: userPhone,
+            ),
             trailing: const Icon(
               Icons.arrow_forward_ios,
               size: 16,
@@ -218,9 +433,10 @@ class UserProfileView extends ConsumerWidget {
             title: 'Recordatorios',
             subtitle: 'Próximas citas y avisos internos',
             trailing: Switch(
-              value: true,
+              value: areMobileNotificationsOn,
               activeThumbColor: AppColors.primaryBlue,
-              onChanged: (_) {},
+              onChanged: (value) =>
+                  _setMobileNotifications(context, ref, value),
             ),
           ),
           const SizedBox(height: 12),
@@ -235,7 +451,7 @@ class UserProfileView extends ConsumerWidget {
                 if (value) {
                   _showLinkWatchDialog(context, ref);
                 } else {
-                  _showUnlinkWatchDialog(context, ref, linkedDevices);
+                  _showUnlinkWatchDialog(context, ref);
                 }
               },
             ),
@@ -245,7 +461,8 @@ class UserProfileView extends ConsumerWidget {
           _buildSettingsTile(
             icon: Icons.fingerprint,
             title: 'Biometría',
-            subtitle: 'Acceso con huella o rostro',
+            subtitle: 'Acceso con seguridad del dispositivo',
+            onTap: () => _showBiometricInfo(context),
             trailing: const Icon(
               Icons.arrow_forward_ios,
               size: 16,
@@ -257,6 +474,7 @@ class UserProfileView extends ConsumerWidget {
             icon: Icons.lock_reset,
             title: 'Cambiar Contraseña',
             subtitle: 'Gestiona tus credenciales',
+            onTap: () => _showChangePasswordDialog(context, ref),
             trailing: const Icon(
               Icons.arrow_forward_ios,
               size: 16,
@@ -335,44 +553,42 @@ class UserProfileView extends ConsumerWidget {
     required String title,
     required String subtitle,
     required Widget trailing,
+    VoidCallback? onTap,
   }) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        onTap: onTap,
         borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.02),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Icon(icon, color: AppColors.primaryBlue),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                  ),
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              Icon(icon, color: AppColors.primaryBlue),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
+                    ),
+                    Text(
+                      subtitle,
+                      style: const TextStyle(color: Colors.grey, fontSize: 13),
+                    ),
+                  ],
                 ),
-                Text(
-                  subtitle,
-                  style: const TextStyle(color: Colors.grey, fontSize: 13),
-                ),
-              ],
-            ),
+              ),
+              trailing,
+            ],
           ),
-          trailing,
-        ],
+        ),
       ),
     );
   }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sistema_dental/core/theme/app_colors.dart';
+import 'package:sistema_dental/core/wear/wear_link_service.dart';
 import 'package:go_router/go_router.dart';
 import 'package:sistema_dental/features/auth/providers/auth_providers.dart';
 import 'package:sistema_dental/features/client/data/notification_repository.dart';
@@ -9,6 +10,7 @@ import 'package:sistema_dental/features/client/data/patient_repository.dart';
 import 'package:sistema_dental/features/shared/data/appointment_repository.dart';
 import 'package:sistema_dental/features/client/presentation/widgets/patient_selector.dart';
 import 'package:sistema_dental/features/client/presentation/widgets/patient_clinical_history_view.dart';
+import 'package:sistema_dental/features/shared/presentation/user_profile_view.dart';
 import 'package:sistema_dental/core/models/appointment.dart';
 import 'package:intl/intl.dart';
 
@@ -29,20 +31,29 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
       appBar: AppBar(
         backgroundColor: AppColors.background,
         elevation: 0,
-        leading: _selectedIndex == 3 
-            ? const Icon(Icons.medical_services_outlined, color: AppColors.primaryBlue) 
+        leading: _selectedIndex == 3
+            ? const Icon(
+                Icons.medical_services_outlined,
+                color: AppColors.primaryBlue,
+              )
             : IconButton(
                 icon: const Icon(Icons.menu, color: AppColors.textPrimary),
                 onPressed: () {},
               ),
         title: Text(
           _selectedIndex == 3 ? 'DentalSync Connect' : 'DentalSync',
-          style: const TextStyle(color: AppColors.primaryBlue, fontWeight: FontWeight.bold),
+          style: const TextStyle(
+            color: AppColors.primaryBlue,
+            fontWeight: FontWeight.bold,
+          ),
         ),
         actions: [
           if (_selectedIndex == 3)
             IconButton(
-              icon: const Icon(Icons.help_outline, color: AppColors.textPrimary),
+              icon: const Icon(
+                Icons.help_outline,
+                color: AppColors.textPrimary,
+              ),
               onPressed: () {},
             )
           else
@@ -78,7 +89,10 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
                       children: [
                         Icon(Icons.logout, color: AppColors.error),
                         SizedBox(width: 8),
-                        Text('Cerrar Sesión', style: TextStyle(color: AppColors.error)),
+                        Text(
+                          'Cerrar Sesión',
+                          style: TextStyle(color: AppColors.error),
+                        ),
                       ],
                     ),
                   ),
@@ -101,9 +115,18 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
         type: BottomNavigationBarType.fixed,
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
-          BottomNavigationBarItem(icon: Icon(Icons.calendar_today), label: 'Schedule'),
-          BottomNavigationBarItem(icon: Icon(Icons.folder_open), label: 'Historial'),
-          BottomNavigationBarItem(icon: Icon(Icons.person_outline), label: 'Profile'),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.calendar_today),
+            label: 'Schedule',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.folder_open),
+            label: 'Historial',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.person_outline),
+            label: 'Profile',
+          ),
         ],
       ),
     );
@@ -117,7 +140,7 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
     } else if (_selectedIndex == 3) {
       return const ClientProfileView();
     }
-    
+
     // Vista Home
     return const ClientHomeView();
   }
@@ -149,7 +172,10 @@ class _ClientHomeViewState extends ConsumerState<ClientHomeView> {
     if (user == null) return;
 
     try {
-      final patientRes = await client.from('patients').select('id').eq('profile_id', user.id);
+      final patientRes = await client
+          .from('patients')
+          .select('id')
+          .eq('profile_id', user.id);
       if (patientRes.isEmpty) {
         setState(() => _isLoading = false);
         return;
@@ -180,7 +206,8 @@ class _ClientHomeViewState extends ConsumerState<ClientHomeView> {
     final userAsync = ref.watch(currentUserProvider);
     final userName = userAsync.value?.name ?? 'Paciente';
     final selectedPatient = ref.watch(selectedPatientProvider);
-    final displayFirstName = selectedPatient?.firstName ?? userName.split(' ').first;
+    final displayFirstName =
+        selectedPatient?.firstName ?? userName.split(' ').first;
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20.0),
@@ -199,13 +226,10 @@ class _ClientHomeViewState extends ConsumerState<ClientHomeView> {
           const SizedBox(height: 8),
           const Text(
             'Tu salud dental es nuestra prioridad hoy.',
-            style: TextStyle(
-              fontSize: 16,
-              color: AppColors.textSecondary,
-            ),
+            style: TextStyle(fontSize: 16, color: AppColors.textSecondary),
           ),
           const SizedBox(height: 24),
-          
+
           if (_isLoading)
             const Center(child: CircularProgressIndicator())
           else if (_nextAppointment != null)
@@ -219,10 +243,13 @@ class _ClientHomeViewState extends ConsumerState<ClientHomeView> {
                 border: Border.all(color: Colors.grey.shade200),
               ),
               child: const Center(
-                child: Text('No tienes citas próximas.', style: TextStyle(color: Colors.grey)),
+                child: Text(
+                  'No tienes citas próximas.',
+                  style: TextStyle(color: Colors.grey),
+                ),
               ),
             ),
-          
+
           const SizedBox(height: 24),
         ],
       ),
@@ -249,12 +276,22 @@ class _ClientHomeViewState extends ConsumerState<ClientHomeView> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
                 decoration: BoxDecoration(
                   color: Colors.white.withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Text('PRÓXIMA CITA', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                child: const Text(
+                  'PRÓXIMA CITA',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
               ),
               Container(
                 padding: const EdgeInsets.all(8),
@@ -262,14 +299,28 @@ class _ClientHomeViewState extends ConsumerState<ClientHomeView> {
                   color: Colors.white.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Icon(Icons.calendar_month, color: Colors.white, size: 20),
-              )
+                child: const Icon(
+                  Icons.calendar_month,
+                  color: Colors.white,
+                  size: 20,
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 20),
-          Text(serviceName, style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
+          Text(
+            serviceName,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
           const SizedBox(height: 4),
-          Text('Dr. $doctorName', style: const TextStyle(color: Colors.white, fontSize: 16)),
+          Text(
+            'Dr. $doctorName',
+            style: const TextStyle(color: Colors.white, fontSize: 16),
+          ),
           const SizedBox(height: 20),
           Row(
             children: [
@@ -314,7 +365,10 @@ class _ClientRecordsViewState extends State<ClientRecordsView> {
     if (user == null) return;
 
     try {
-      final patientRes = await client.from('patients').select('id').eq('profile_id', user.id);
+      final patientRes = await client
+          .from('patients')
+          .select('id')
+          .eq('profile_id', user.id);
       if (patientRes.isEmpty) {
         setState(() => _isLoading = false);
         return;
@@ -346,26 +400,44 @@ class _ClientRecordsViewState extends State<ClientRecordsView> {
     return ListView(
       padding: const EdgeInsets.all(20.0),
       children: [
-        const Text('Historial Médico', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: AppColors.primaryBlue)),
+        const Text(
+          'Historial Médico',
+          style: TextStyle(
+            fontSize: 24,
+            fontWeight: FontWeight.bold,
+            color: AppColors.primaryBlue,
+          ),
+        ),
         const SizedBox(height: 16),
         if (_completedAppointments.isEmpty)
-          const Text('No hay registros médicos disponibles.', style: TextStyle(color: Colors.grey))
+          const Text(
+            'No hay registros médicos disponibles.',
+            style: TextStyle(color: Colors.grey),
+          )
         else
           ..._completedAppointments.map((appt) {
             final date = DateTime.parse(appt['date_time']).toLocal();
-            final doctorName = appt['doctors']?['profiles']?['name'] ?? 'Doctor';
+            final doctorName =
+                appt['doctors']?['profiles']?['name'] ?? 'Doctor';
             final serviceName = appt['services']?['service_name'] ?? 'Consulta';
 
             return Card(
               margin: const EdgeInsets.only(bottom: 12),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
               child: ListTile(
                 leading: const CircleAvatar(
                   backgroundColor: AppColors.lightBlueAccent,
                   child: Icon(Icons.check_circle, color: AppColors.primaryBlue),
                 ),
-                title: Text(serviceName, style: const TextStyle(fontWeight: FontWeight.bold)),
-                subtitle: Text('Dr. $doctorName - ${DateFormat('dd MMM yyyy').format(date)}'),
+                title: Text(
+                  serviceName,
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+                subtitle: Text(
+                  'Dr. $doctorName - ${DateFormat('dd MMM yyyy').format(date)}',
+                ),
               ),
             );
           }),
@@ -404,30 +476,42 @@ class _ClientScheduleViewState extends ConsumerState<ClientScheduleView> {
               children: [
                 const Icon(Icons.search, color: Colors.grey),
                 const SizedBox(width: 12),
-                Text('Search appointments or dentists', style: TextStyle(color: Colors.grey.shade400)),
+                Text(
+                  'Search appointments or dentists',
+                  style: TextStyle(color: Colors.grey.shade400),
+                ),
               ],
             ),
           ),
           const SizedBox(height: 24),
-          
+
           // Tabs
           Row(
             children: [
-              const Text('Upcoming', style: TextStyle(color: AppColors.primaryBlue, fontWeight: FontWeight.bold, fontSize: 16)),
+              const Text(
+                'Upcoming',
+                style: TextStyle(
+                  color: AppColors.primaryBlue,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                ),
+              ),
               const SizedBox(width: 24),
-              Text('Past', style: TextStyle(color: Colors.grey.shade500, fontSize: 16)),
+              Text(
+                'Past',
+                style: TextStyle(color: Colors.grey.shade500, fontSize: 16),
+              ),
               const SizedBox(width: 24),
-              Text('Cancelled', style: TextStyle(color: Colors.grey.shade500, fontSize: 16)),
+              Text(
+                'Cancelled',
+                style: TextStyle(color: Colors.grey.shade500, fontSize: 16),
+              ),
             ],
           ),
           const SizedBox(height: 8),
-          Container(
-            width: 70,
-            height: 3,
-            color: AppColors.primaryBlue,
-          ),
+          Container(width: 70, height: 3, color: AppColors.primaryBlue),
           const SizedBox(height: 24),
-          
+
           appointmentsAsync.when(
             loading: () => const Center(child: CircularProgressIndicator()),
             error: (err, stack) => Center(child: Text('Error: $err')),
@@ -436,15 +520,29 @@ class _ClientScheduleViewState extends ConsumerState<ClientScheduleView> {
                 return const Center(child: Text('No appointments found.'));
               }
 
-              final activeAppts = appointments.where((a) => a.status == 'in_lobby' || a.status == 'in_treatment').toList();
-              final activeAppt = activeAppts.isNotEmpty ? activeAppts.first : null;
-              final otherAppts = appointments.where((a) => a.id != (activeAppt?.id)).toList();
+              final activeAppts = appointments
+                  .where(
+                    (a) => a.status == 'in_lobby' || a.status == 'in_treatment',
+                  )
+                  .toList();
+              final activeAppt = activeAppts.isNotEmpty
+                  ? activeAppts.first
+                  : null;
+              final otherAppts = appointments
+                  .where((a) => a.id != (activeAppt?.id))
+                  .toList();
 
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   if (activeAppt != null) ...[
-                    const Text('Your Current Turn', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                    const Text(
+                      'Your Current Turn',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                     const SizedBox(height: 16),
                     _buildCurrentTurnCard(activeAppt),
                     const SizedBox(height: 24),
@@ -452,15 +550,29 @@ class _ClientScheduleViewState extends ConsumerState<ClientScheduleView> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text('All Appointments', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-                      const Text('View Calendar', style: TextStyle(color: AppColors.primaryBlue, fontWeight: FontWeight.bold)),
+                      const Text(
+                        'All Appointments',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const Text(
+                        'View Calendar',
+                        style: TextStyle(
+                          color: AppColors.primaryBlue,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 16),
-                  ...otherAppts.map((appt) => Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        child: _buildAppointmentListCard(appt),
-                      )),
+                  ...otherAppts.map(
+                    (appt) => Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: _buildAppointmentListCard(appt),
+                    ),
+                  ),
                 ],
               );
             },
@@ -483,17 +595,41 @@ class _ClientScheduleViewState extends ConsumerState<ClientScheduleView> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text('QUEUE NUMBER', style: TextStyle(color: Colors.white70, fontSize: 12, letterSpacing: 1)),
-              const Text('ESTIMATED: 12 MIN', style: TextStyle(color: Colors.white70, fontSize: 12, letterSpacing: 1)),
+              const Text(
+                'QUEUE NUMBER',
+                style: TextStyle(
+                  color: Colors.white70,
+                  fontSize: 12,
+                  letterSpacing: 1,
+                ),
+              ),
+              const Text(
+                'ESTIMATED: 12 MIN',
+                style: TextStyle(
+                  color: Colors.white70,
+                  fontSize: 12,
+                  letterSpacing: 1,
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 8),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(appointment.queueCode ?? 'N/A', style: const TextStyle(color: Colors.white, fontSize: 48, fontWeight: FontWeight.bold)),
+              Text(
+                appointment.queueCode ?? 'N/A',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 48,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
+                ),
                 decoration: BoxDecoration(
                   color: AppColors.warning,
                   borderRadius: BorderRadius.circular(20),
@@ -502,7 +638,16 @@ class _ClientScheduleViewState extends ConsumerState<ClientScheduleView> {
                   children: [
                     const Icon(Icons.circle, color: Colors.white, size: 10),
                     const SizedBox(width: 4),
-                    Text(appointment.status == 'in_lobby' ? 'IN QUEUE' : 'IN TREATMENT', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+                    Text(
+                      appointment.status == 'in_lobby'
+                          ? 'IN QUEUE'
+                          : 'IN TREATMENT',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -525,8 +670,18 @@ class _ClientScheduleViewState extends ConsumerState<ClientScheduleView> {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Dr. ${appointment.doctorName ?? 'Dentist'}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
-                  Text(appointment.serviceName ?? 'Consultation', style: const TextStyle(color: Colors.white70, fontSize: 14)),
+                  Text(
+                    'Dr. ${appointment.doctorName ?? 'Dentist'}',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
+                  ),
+                  Text(
+                    appointment.serviceName ?? 'Consultation',
+                    style: const TextStyle(color: Colors.white70, fontSize: 14),
+                  ),
                 ],
               ),
             ],
@@ -559,8 +714,22 @@ class _ClientScheduleViewState extends ConsumerState<ClientScheduleView> {
             ),
             child: Column(
               children: [
-                Text(month, style: const TextStyle(color: AppColors.primaryBlue, fontWeight: FontWeight.bold, fontSize: 12)),
-                Text(day, style: const TextStyle(color: AppColors.primaryBlue, fontWeight: FontWeight.bold, fontSize: 20)),
+                Text(
+                  month,
+                  style: const TextStyle(
+                    color: AppColors.primaryBlue,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                  ),
+                ),
+                Text(
+                  day,
+                  style: const TextStyle(
+                    color: AppColors.primaryBlue,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 20,
+                  ),
+                ),
               ],
             ),
           ),
@@ -569,9 +738,18 @@ class _ClientScheduleViewState extends ConsumerState<ClientScheduleView> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(doctor, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                Text(
+                  doctor,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
                 const SizedBox(height: 4),
-                Text(details, style: const TextStyle(color: Colors.grey, fontSize: 14)),
+                Text(
+                  details,
+                  style: const TextStyle(color: Colors.grey, fontSize: 14),
+                ),
               ],
             ),
           ),
@@ -586,36 +764,68 @@ class _ClientScheduleViewState extends ConsumerState<ClientScheduleView> {
 class ClientProfileView extends ConsumerWidget {
   const ClientProfileView({super.key});
 
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return const UserProfileView(roleLabel: 'Paciente');
+  }
+}
+
+class LegacyClientProfileView extends ConsumerWidget {
+  const LegacyClientProfileView({super.key});
+
   void _showLinkWatchDialog(BuildContext context, WidgetRef ref) {
     showDialog(
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
-          title: const Text('Vincular Smartwatch'),
+          title: const Text('Vincular Wear OS'),
           content: const Text(
-            'Elige la plataforma de tu reloj inteligente para conectarlo con DentalSync y recibir notificaciones en tiempo real.',
+            'DentalSync buscará relojes Wear OS emparejados con este teléfono y enviará tu sesión de forma automática.',
           ),
           actions: [
             Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                TextButton.icon(
-                  icon: const Icon(Icons.watch, color: AppColors.primaryBlue),
-                  label: const Text('Apple Watch (watchOS)'),
+                FilledButton.icon(
+                  icon: const Icon(Icons.watch_rounded, color: Colors.white),
+                  label: const Text('Vincular automáticamente'),
                   onPressed: () async {
-                    final repo = ref.read(notificationRepositoryProvider);
-                    await repo.registerDevice(
-                      deviceType: 'watch_os',
-                      pushToken: 'mock_apple_watch_token_${ref.read(authRepositoryProvider).currentAuthUser?.id ?? ""}',
-                    );
-                    ref.invalidate(linkedDevicesProvider);
+                    final authUser = ref
+                        .read(authRepositoryProvider)
+                        .currentAuthUser;
+                    final link = await WearLinkService.instance
+                        .linkCurrentSession(role: 'client');
+
+                    if (link.success && authUser != null) {
+                      final repo = ref.read(notificationRepositoryProvider);
+                      await repo.registerDevice(
+                        deviceType: 'wear_os',
+                        pushToken: 'wear_os_companion_${authUser.id}',
+                      );
+                      ref
+                          .read(smartwatchLinkedOverrideProvider.notifier)
+                          .markLinked();
+                      await ref
+                          .refresh(linkedDevicesProvider.future)
+                          .then((_) {});
+                      ref
+                          .read(smartwatchLinkedOverrideProvider.notifier)
+                          .clear();
+                    }
+
                     if (context.mounted) {
                       Navigator.of(context).pop();
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('¡Apple Watch vinculado correctamente!'),
-                          backgroundColor: AppColors.success,
+                        SnackBar(
+                          content: Text(
+                            link.success
+                                ? 'Sesión enviada. En el reloj toca Reintentar.'
+                                : link.message,
+                          ),
+                          backgroundColor: link.success
+                              ? AppColors.success
+                              : AppColors.error,
                         ),
                       );
                     }
@@ -623,20 +833,29 @@ class ClientProfileView extends ConsumerWidget {
                 ),
                 const SizedBox(height: 8),
                 TextButton.icon(
-                  icon: const Icon(Icons.watch_rounded, color: AppColors.secondaryBlue),
-                  label: const Text('Wear OS (Android)'),
+                  icon: const Icon(
+                    Icons.notifications_active_outlined,
+                    color: AppColors.primaryBlue,
+                  ),
+                  label: const Text('Registrar solo notificaciones'),
                   onPressed: () async {
+                    final authUser = ref
+                        .read(authRepositoryProvider)
+                        .currentAuthUser;
                     final repo = ref.read(notificationRepositoryProvider);
                     await repo.registerDevice(
                       deviceType: 'wear_os',
-                      pushToken: 'mock_wear_os_token_${ref.read(authRepositoryProvider).currentAuthUser?.id ?? ""}',
+                      pushToken: 'wear_os_notifications_${authUser?.id ?? ""}',
                     );
-                    ref.invalidate(linkedDevicesProvider);
+                    await ref
+                        .refresh(linkedDevicesProvider.future)
+                        .then((_) {});
+                    ref.read(smartwatchLinkedOverrideProvider.notifier).clear();
                     if (context.mounted) {
                       Navigator.of(context).pop();
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
-                          content: Text('¡Smartwatch Wear OS vinculado correctamente!'),
+                          content: Text('Notificaciones Wear OS activadas.'),
                           backgroundColor: AppColors.success,
                         ),
                       );
@@ -646,7 +865,10 @@ class ClientProfileView extends ConsumerWidget {
                 const SizedBox(height: 8),
                 TextButton(
                   onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('Cancelar', style: TextStyle(color: Colors.grey)),
+                  child: const Text(
+                    'Cancelar',
+                    style: TextStyle(color: Colors.grey),
+                  ),
                 ),
               ],
             ),
@@ -656,35 +878,61 @@ class ClientProfileView extends ConsumerWidget {
     );
   }
 
-  void _showUnlinkWatchDialog(BuildContext context, WidgetRef ref, List<Map<String, dynamic>> devices) {
+  void _showUnlinkWatchDialog(BuildContext context, WidgetRef ref) {
     showDialog(
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
           title: const Text('Desvincular Smartwatch'),
-          content: const Text('¿Estás seguro de que deseas desvincular tus relojes inteligentes de DentalSync? Dejarás de recibir notificaciones de tu turno.'),
+          content: const Text(
+            '¿Estás seguro de que deseas desvincular tus relojes inteligentes de DentalSync? Dejarás de recibir notificaciones de tu turno.',
+          ),
           actions: [
             TextButton(
               onPressed: () async {
                 final repo = ref.read(notificationRepositoryProvider);
-                for (final d in devices) {
-                  await repo.deactivateDevice(d['device_type'] as String);
-                }
-                ref.invalidate(linkedDevicesProvider);
+                ref
+                    .read(smartwatchLinkedOverrideProvider.notifier)
+                    .markUnlinked();
+                final success = await repo.deactivateSmartwatchDevices();
+                final unlinkNotice = await WearLinkService.instance
+                    .unlinkCurrentSession();
+                final stillLinked = await repo.hasActiveSmartwatchDevice();
+                await ref.refresh(linkedDevicesProvider.future).then((_) {});
+                stillLinked
+                    ? ref
+                          .read(smartwatchLinkedOverrideProvider.notifier)
+                          .clear()
+                    : ref
+                          .read(smartwatchLinkedOverrideProvider.notifier)
+                          .markUnlinked();
                 if (context.mounted) {
                   Navigator.of(context).pop();
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Dispositivos desvinculados.'),
+                    SnackBar(
+                      content: Text(
+                        success
+                            ? unlinkNotice.success
+                                  ? 'Smartwatch desvinculado. Actualiza el reloj.'
+                                  : 'Smartwatch desvinculado en la app. Actualiza o reinicia el reloj si sigue conectado.'
+                            : 'No se pudo desvincular el smartwatch.',
+                      ),
+                      backgroundColor: success ? null : AppColors.error,
                     ),
                   );
                 }
               },
-              child: const Text('Sí, Desvincular', style: TextStyle(color: AppColors.error)),
+              child: const Text(
+                'Sí, Desvincular',
+                style: TextStyle(color: AppColors.error),
+              ),
             ),
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Cancelar', style: TextStyle(color: Colors.grey)),
+              child: const Text(
+                'Cancelar',
+                style: TextStyle(color: Colors.grey),
+              ),
             ),
           ],
         );
@@ -700,18 +948,26 @@ class ClientProfileView extends ConsumerWidget {
     final user = userAsync.value;
     final userName = user?.name ?? 'Paciente';
     final userEmail = user?.email ?? '';
-    final userId = user?.id != null ? (user!.id.length > 8 ? user.id.substring(0, 8) : user.id) : 'DS-2026-PEND';
+    final userId = user?.id != null
+        ? (user!.id.length > 8 ? user.id.substring(0, 8) : user.id)
+        : 'DS-2026-PEND';
 
     final linkedDevices = devicesAsync.value ?? [];
-    final isWatchLinked = linkedDevices.any((d) => d['device_type'] == 'watch_os' || d['device_type'] == 'wear_os');
-    
+    final smartwatchOverride = ref.watch(smartwatchLinkedOverrideProvider);
+    final watchDevices = linkedDevices.where(
+      (d) => d['device_type'] == 'watch_os' || d['device_type'] == 'wear_os',
+    );
+    final isWatchLinked = smartwatchOverride ?? watchDevices.isNotEmpty;
+
     // Descripción del smartwatch conectado
     String watchSubtitle = 'Sincronización con dispositivos';
     if (isWatchLinked) {
-      final types = linkedDevices.map((d) {
-        final dt = d['device_type'] as String;
-        return dt == 'watch_os' ? 'Apple Watch' : 'Wear OS';
-      }).join(', ');
+      final types = watchDevices
+          .map((d) {
+            final dt = d['device_type'] as String;
+            return dt == 'watch_os' ? 'Apple Watch' : 'Wear OS';
+          })
+          .join(', ');
       watchSubtitle = 'Conectado: $types';
     }
 
@@ -727,7 +983,11 @@ class ClientProfileView extends ConsumerWidget {
               const CircleAvatar(
                 radius: 50,
                 backgroundColor: AppColors.lightBlueAccent,
-                child: Icon(Icons.person, size: 60, color: AppColors.primaryBlue),
+                child: Icon(
+                  Icons.person,
+                  size: 60,
+                  color: AppColors.primaryBlue,
+                ),
               ),
               Container(
                 padding: const EdgeInsets.all(6),
@@ -740,23 +1000,33 @@ class ClientProfileView extends ConsumerWidget {
             ],
           ),
           const SizedBox(height: 16),
-          Text(userName, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+          Text(
+            userName,
+            style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+          ),
           const SizedBox(height: 4),
-          Text('Paciente ID: $userId', style: const TextStyle(color: AppColors.textSecondary)),
+          Text(
+            'Paciente ID: $userId',
+            style: const TextStyle(color: AppColors.textSecondary),
+          ),
           const SizedBox(height: 4),
           Text(userEmail, style: const TextStyle(color: AppColors.primaryBlue)),
-          
+
           const SizedBox(height: 32),
-          
+
           // Secciones de Configuración
           _buildSectionTitle('PERFIL'),
           _buildSettingsTile(
             icon: Icons.person_outline,
             title: 'Información Personal',
             subtitle: 'Nombre, ID y Contacto',
-            trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
+            trailing: const Icon(
+              Icons.arrow_forward_ios,
+              size: 16,
+              color: Colors.grey,
+            ),
           ),
-          
+
           const SizedBox(height: 24),
           _buildSectionTitle('NOTIFICACIONES'),
           _buildSettingsTile(
@@ -765,7 +1035,7 @@ class ClientProfileView extends ConsumerWidget {
             subtitle: 'Próximas citas y tratamientos',
             trailing: Switch(
               value: true,
-              activeColor: AppColors.primaryBlue,
+              activeThumbColor: AppColors.primaryBlue,
               onChanged: (val) {},
             ),
           ),
@@ -776,35 +1046,43 @@ class ClientProfileView extends ConsumerWidget {
             subtitle: watchSubtitle,
             trailing: Switch(
               value: isWatchLinked,
-              activeColor: AppColors.primaryBlue,
+              activeThumbColor: AppColors.primaryBlue,
               onChanged: (val) {
                 if (val) {
                   _showLinkWatchDialog(context, ref);
                 } else {
-                  _showUnlinkWatchDialog(context, ref, linkedDevices);
+                  _showUnlinkWatchDialog(context, ref);
                 }
               },
             ),
           ),
-          
+
           const SizedBox(height: 24),
           _buildSectionTitle('SEGURIDAD'),
           _buildSettingsTile(
             icon: Icons.fingerprint,
             title: 'Biometría',
             subtitle: 'Acceso con Huella o Rostro',
-            trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
+            trailing: const Icon(
+              Icons.arrow_forward_ios,
+              size: 16,
+              color: Colors.grey,
+            ),
           ),
           const SizedBox(height: 12),
           _buildSettingsTile(
             icon: Icons.lock_reset,
             title: 'Cambiar Contraseña',
             subtitle: 'Última actualización hace 3 meses',
-            trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
+            trailing: const Icon(
+              Icons.arrow_forward_ios,
+              size: 16,
+              color: Colors.grey,
+            ),
           ),
-          
+
           const SizedBox(height: 32),
-          
+
           // Botón Cerrar Sesión
           SizedBox(
             width: double.infinity,
@@ -820,12 +1098,18 @@ class ClientProfileView extends ConsumerWidget {
                 padding: const EdgeInsets.symmetric(vertical: 16),
               ),
               icon: const Icon(Icons.logout),
-              label: const Text('Cerrar Sesión', style: TextStyle(fontWeight: FontWeight.bold)),
+              label: const Text(
+                'Cerrar Sesión',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
             ),
           ),
-          
+
           const SizedBox(height: 16),
-          const Text('Versión 2.4.0 (Build 882)', style: TextStyle(color: Colors.grey, fontSize: 12)),
+          const Text(
+            'Versión 2.4.0 (Build 882)',
+            style: TextStyle(color: Colors.grey, fontSize: 12),
+          ),
           const SizedBox(height: 20),
         ],
       ),
@@ -850,14 +1134,23 @@ class ClientProfileView extends ConsumerWidget {
     );
   }
 
-  Widget _buildSettingsTile({required IconData icon, required String title, required String subtitle, required Widget trailing}) {
+  Widget _buildSettingsTile({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required Widget trailing,
+  }) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4)),
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.02),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
         ],
       ),
       child: Row(
@@ -868,8 +1161,17 @@ class ClientProfileView extends ConsumerWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                Text(subtitle, style: const TextStyle(color: Colors.grey, fontSize: 13)),
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
+                Text(
+                  subtitle,
+                  style: const TextStyle(color: Colors.grey, fontSize: 13),
+                ),
               ],
             ),
           ),

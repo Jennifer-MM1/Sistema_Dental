@@ -215,6 +215,9 @@ CREATE POLICY "Dispositivos propios" ON public.linked_devices
 DROP POLICY IF EXISTS "Registrar dispositivos" ON public.linked_devices;
 CREATE POLICY "Registrar dispositivos" ON public.linked_devices
   FOR INSERT TO authenticated WITH CHECK (user_id = auth.uid());
+DROP POLICY IF EXISTS "Actualizar dispositivos propios" ON public.linked_devices;
+CREATE POLICY "Actualizar dispositivos propios" ON public.linked_devices
+  FOR UPDATE TO authenticated USING (user_id = auth.uid()) WITH CHECK (user_id = auth.uid());
 
 -- ============================================================
 -- PASO 2: TRIGGER PARA AUTO-CREAR PERFIL AL REGISTRARSE

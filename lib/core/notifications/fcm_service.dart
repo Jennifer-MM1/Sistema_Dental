@@ -12,7 +12,9 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   // Los mensajes en background se manejan automáticamente por el sistema operativo.
   // Solo necesitamos este handler registrado para que FCM funcione en background.
-  debugPrint('[FCM Background] Mensaje recibido: ${message.notification?.title}');
+  debugPrint(
+    '[FCM Background] Mensaje recibido: ${message.notification?.title}',
+  );
 }
 
 /// Servicio centralizado para notificaciones push con Firebase Cloud Messaging.
@@ -49,7 +51,9 @@ class FcmService {
   Future<void> initialize() async {
     // FCM no está disponible en Windows/Linux desktop
     if (!_isFcmSupported) {
-      debugPrint('[FCM] Plataforma no soportada: ${kIsWeb ? 'web' : Platform.operatingSystem}');
+      debugPrint(
+        '[FCM] Plataforma no soportada: ${kIsWeb ? 'web' : Platform.operatingSystem}',
+      );
       return;
     }
 
@@ -66,7 +70,7 @@ class FcmService {
     _setupForegroundHandler();
 
     // 5. Obtener token FCM y guardarlo en Supabase
-    await _registerDeviceToken();
+    await activateToken();
 
     // 6. Escuchar cambios de token (cuando FCM rota el token)
     _messaging.onTokenRefresh.listen(_saveTokenToSupabase);
@@ -96,11 +100,13 @@ class FcmService {
     // Crear el canal de alta importancia en Android
     await _localNotifications
         .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>()
+          AndroidFlutterLocalNotificationsPlugin
+        >()
         ?.createNotificationChannel(_channel);
 
-    const initializationSettingsAndroid =
-        AndroidInitializationSettings('@mipmap/ic_launcher');
+    const initializationSettingsAndroid = AndroidInitializationSettings(
+      '@mipmap/ic_launcher',
+    );
     const initializationSettingsDarwin = DarwinInitializationSettings();
 
     await _localNotifications.initialize(
@@ -120,7 +126,9 @@ class FcmService {
       final notification = message.notification;
       final android = message.notification?.android;
 
-      debugPrint('[FCM Foreground] ${notification?.title}: ${notification?.body}');
+      debugPrint(
+        '[FCM Foreground] ${notification?.title}: ${notification?.body}',
+      );
 
       // Mostrar notificación local si la app está en primer plano
       if (notification != null && android != null) {
@@ -153,18 +161,24 @@ class FcmService {
   //  REGISTRO DE TOKEN FCM EN SUPABASE
   // ───────────────────────────────────────────────────────────────────────────
 
-  Future<void> _registerDeviceToken() async {
+  Future<bool> activateToken() async {
+    if (!_isFcmSupported) return false;
+    await _requestPermissions();
+    return _registerDeviceToken();
+  }
+
+  Future<bool> _registerDeviceToken() async {
     final token = await _messaging.getToken();
     if (token == null) {
       debugPrint('[FCM] No se pudo obtener el token FCM.');
-      return;
+      return false;
     }
-    await _saveTokenToSupabase(token);
+    return _saveTokenToSupabase(token);
   }
 
-  Future<void> _saveTokenToSupabase(String token) async {
+  Future<bool> _saveTokenToSupabase(String token) async {
     final user = Supabase.instance.client.auth.currentUser;
-    if (user == null) return;
+    if (user == null) return false;
 
     final deviceType = _getDeviceType();
 
@@ -190,16 +204,18 @@ class FcmService {
         });
       }
       debugPrint('[FCM] Token guardado en Supabase ($deviceType).');
+      return true;
     } catch (e) {
       debugPrint('[FCM] Error guardando token: $e');
+      return false;
     }
   }
 
   /// Desactiva el token del dispositivo actual (llamar al cerrar sesión).
-  Future<void> deactivateToken() async {
-    if (!_isFcmSupported) return;
+  Future<bool> deactivateToken() async {
+    if (!_isFcmSupported) return false;
     final user = Supabase.instance.client.auth.currentUser;
-    if (user == null) return;
+    if (user == null) return false;
 
     final deviceType = _getDeviceType();
     try {
@@ -209,8 +225,10 @@ class FcmService {
           .eq('user_id', user.id)
           .eq('device_type', deviceType);
       debugPrint('[FCM] Token desactivado.');
+      return true;
     } catch (e) {
       debugPrint('[FCM] Error desactivando token: $e');
+      return false;
     }
   }
 
@@ -221,6 +239,11 @@ class FcmService {
   bool get _isFcmSupported {
     if (kIsWeb) return false;
     return Platform.isAndroid || Platform.isIOS || Platform.isMacOS;
+  }
+
+  String? get currentDeviceType {
+    if (!_isFcmSupported) return null;
+    return _getDeviceType();
   }
 
   String _getDeviceType() {

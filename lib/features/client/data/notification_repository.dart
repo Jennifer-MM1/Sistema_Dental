@@ -1,11 +1,45 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:sistema_dental/core/notifications/fcm_service.dart';
 import 'package:sistema_dental/core/supabase/supabase_provider.dart';
 
 final notificationRepositoryProvider = Provider<NotificationRepository>((ref) {
   final client = ref.watch(supabaseClientProvider);
   return NotificationRepository(client);
 });
+
+class SmartwatchLinkedOverrideNotifier extends Notifier<bool?> {
+  @override
+  bool? build() => null;
+
+  void markLinked() => state = true;
+
+  void markUnlinked() => state = false;
+
+  void clear() => state = null;
+}
+
+final smartwatchLinkedOverrideProvider =
+    NotifierProvider<SmartwatchLinkedOverrideNotifier, bool?>(() {
+      return SmartwatchLinkedOverrideNotifier();
+    });
+
+class MobileNotificationsOverrideNotifier extends Notifier<bool?> {
+  @override
+  bool? build() => null;
+
+  void markEnabled() => state = true;
+
+  void markDisabled() => state = false;
+
+  void clear() => state = null;
+}
+
+final mobileNotificationsOverrideProvider =
+    NotifierProvider<MobileNotificationsOverrideNotifier, bool?>(() {
+      return MobileNotificationsOverrideNotifier();
+    });
 
 /// Repositorio para gestionar la vinculación de dispositivos
 /// y las notificaciones push hacia smartwatches (RF-09).
@@ -41,10 +75,7 @@ class NotificationRepository {
         // Actualizar el token existente
         await _client
             .from('linked_devices')
-            .update({
-              'push_token': pushToken,
-              'is_active': true,
-            })
+            .update({'push_token': pushToken, 'is_active': true})
             .eq('id', existing['id']);
       } else {
         // Crear nuevo registro de dispositivo
@@ -58,6 +89,7 @@ class NotificationRepository {
 
       return true;
     } catch (e) {
+      debugPrint('Error registrando dispositivo $deviceType: $e');
       return false;
     }
   }
@@ -73,7 +105,41 @@ class NotificationRepository {
           .update({'is_active': false})
           .eq('user_id', user.id)
           .eq('device_type', deviceType);
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('Error desactivando dispositivo $deviceType: $e');
+    }
+  }
+
+  /// Desactiva solo los smartwatches vinculados a la cuenta actual.
+  Future<bool> deactivateSmartwatchDevices() async {
+    final user = _client.auth.currentUser;
+    if (user == null) return false;
+
+    try {
+      final smartwatchTypes = ['watch_os', 'wear_os'];
+      await _client
+          .from('linked_devices')
+          .update({'is_active': false})
+          .eq('user_id', user.id)
+          .inFilter('device_type', smartwatchTypes);
+
+      final remaining = await _client
+          .from('linked_devices')
+          .select('id')
+          .eq('user_id', user.id)
+          .eq('is_active', true)
+          .inFilter('device_type', smartwatchTypes);
+
+      return List.from(remaining).isEmpty;
+    } catch (e) {
+      debugPrint('Error desvinculando smartwatch: $e');
+      return false;
+    }
+  }
+
+  Future<bool> hasActiveSmartwatchDevice() async {
+    final devices = await getLinkedSmartwatchDevices();
+    return devices.isNotEmpty;
   }
 
   /// Obtiene todos los dispositivos vinculados del usuario actual.
@@ -91,6 +157,45 @@ class NotificationRepository {
       return List<Map<String, dynamic>>.from(response);
     } catch (e) {
       return [];
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> getLinkedSmartwatchDevices() async {
+    final user = _client.auth.currentUser;
+    if (user == null) return [];
+
+    try {
+      final response = await _client
+          .from('linked_devices')
+          .select()
+          .eq('user_id', user.id)
+          .eq('is_active', true)
+          .inFilter('device_type', ['watch_os', 'wear_os']);
+
+      return List<Map<String, dynamic>>.from(response);
+    } catch (e) {
+      debugPrint('Error obteniendo smartwatches vinculados: $e');
+      return [];
+    }
+  }
+
+  Future<bool> isDeviceTypeActive(String deviceType) async {
+    final user = _client.auth.currentUser;
+    if (user == null) return false;
+
+    try {
+      final response = await _client
+          .from('linked_devices')
+          .select('id')
+          .eq('user_id', user.id)
+          .eq('device_type', deviceType)
+          .eq('is_active', true)
+          .limit(1);
+
+      return List.from(response).isNotEmpty;
+    } catch (e) {
+      debugPrint('Error consultando dispositivo $deviceType: $e');
+      return false;
     }
   }
 
@@ -120,7 +225,20 @@ class NotificationRepository {
   }
 }
 
-final linkedDevicesProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
+final linkedDevicesProvider = FutureProvider<List<Map<String, dynamic>>>((
+  ref,
+) async {
   final repo = ref.watch(notificationRepositoryProvider);
-  return await repo.getLinkedDevices();
+  return await repo.getLinkedSmartwatchDevices();
 });
+
+final currentDeviceNotificationsProvider = FutureProvider<bool>((ref) async {
+  final repo = ref.watch(notificationRepositoryProvider);
+  final deviceType = ref.watch(currentNotificationDeviceTypeProvider);
+  if (deviceType == null) return false;
+  return repo.isDeviceTypeActive(deviceType);
+});
+
+final currentNotificationDeviceTypeProvider = Provider<String?>(
+  (ref) => FcmService.instance.currentDeviceType,
+);
