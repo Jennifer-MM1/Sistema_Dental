@@ -1,10 +1,8 @@
-
-
 /// Modelo que representa una ficha de paciente (multi-paciente por cuenta).
 class Patient {
   final String id;
   final String? clinicId; // Refers to clinics(id)
-  final String profileId; // Refers to profiles(id)
+  final String profileId; // Cliente/tutor propietario de la ficha
   final String firstName;
   final String lastName;
   final DateTime? dateOfBirth;

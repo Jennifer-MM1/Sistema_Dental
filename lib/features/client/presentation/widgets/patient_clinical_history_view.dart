@@ -32,16 +32,25 @@ class _PatientClinicalHistoryViewState
   }
 
   Future<void> _loadHistory() async {
+    if (mounted) setState(() => _isLoading = true);
     final selectedPatient = ref.read(selectedPatientProvider);
     if (selectedPatient == null) {
-      setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() {
+          _notes = [];
+          _patientName = '';
+          _patientDob = null;
+          _isLoading = false;
+        });
+      }
       return;
     }
 
     _patientName = selectedPatient.fullName;
-    _patientDob = selectedPatient.dateOfBirth
-        ?.toIso8601String()
-        .substring(0, 10);
+    _patientDob = selectedPatient.dateOfBirth?.toIso8601String().substring(
+      0,
+      10,
+    );
 
     final repo = ref.read(clinicalRepositoryProvider);
     _notes = await repo.getNotesForPatient(selectedPatient.id);
@@ -51,6 +60,10 @@ class _PatientClinicalHistoryViewState
 
   @override
   Widget build(BuildContext context) {
+    ref.listen(selectedPatientProvider, (previous, next) {
+      if (previous?.id != next?.id) _loadHistory();
+    });
+
     if (_isLoading) {
       return const Center(
         child: CircularProgressIndicator(color: AppColors.primaryBlue),
@@ -64,8 +77,11 @@ class _PatientClinicalHistoryViewState
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.medical_information_outlined,
-                  size: 64, color: Colors.grey.shade300),
+              Icon(
+                Icons.medical_information_outlined,
+                size: 64,
+                color: Colors.grey.shade300,
+              ),
               const SizedBox(height: 16),
               Text(
                 'Sin historial clínico',
@@ -79,10 +95,7 @@ class _PatientClinicalHistoryViewState
               Text(
                 'Cuando tu dentista registre consultas, aparecerán aquí.',
                 textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Colors.grey.shade400,
-                ),
+                style: TextStyle(fontSize: 14, color: Colors.grey.shade400),
               ),
             ],
           ),
@@ -102,8 +115,10 @@ class _PatientClinicalHistoryViewState
               padding: const EdgeInsets.only(bottom: 16),
               child: Row(
                 children: [
-                  const Icon(Icons.medical_information,
-                      color: AppColors.primaryBlue),
+                  const Icon(
+                    Icons.medical_information,
+                    color: AppColors.primaryBlue,
+                  ),
                   const SizedBox(width: 8),
                   const Text(
                     'Mi Historial Clínico',
@@ -115,8 +130,10 @@ class _PatientClinicalHistoryViewState
                   ),
                   const Spacer(),
                   Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 4,
+                    ),
                     decoration: BoxDecoration(
                       color: AppColors.primaryBlue.withAlpha(26),
                       borderRadius: BorderRadius.circular(12),
@@ -144,7 +161,7 @@ class _PatientClinicalHistoryViewState
 
   Widget _buildNoteCard(ClinicalNote note) {
     final dateStr = note.createdAt != null
-        ? DateFormat('dd MMM yyyy', 'es').format(note.createdAt!)
+        ? DateFormat('dd/MM/yyyy').format(note.createdAt!)
         : 'Sin fecha';
 
     return Card(
@@ -163,8 +180,10 @@ class _PatientClinicalHistoryViewState
             Row(
               children: [
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
                     color: AppColors.primaryBlue.withAlpha(26),
                     borderRadius: BorderRadius.circular(8),
@@ -172,8 +191,11 @@ class _PatientClinicalHistoryViewState
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.calendar_today,
-                          size: 14, color: AppColors.primaryBlue),
+                      const Icon(
+                        Icons.calendar_today,
+                        size: 14,
+                        color: AppColors.primaryBlue,
+                      ),
                       const SizedBox(width: 4),
                       Text(
                         dateStr,
@@ -204,7 +226,7 @@ class _PatientClinicalHistoryViewState
                 TextButton.icon(
                   onPressed: () => _showPrescription(note),
                   icon: const Icon(Icons.description_outlined, size: 16),
-                  label: const Text('Ver Receta'),
+                  label: const Text('Ver receta'),
                   style: TextButton.styleFrom(
                     foregroundColor: AppColors.success,
                     textStyle: const TextStyle(fontSize: 12),
@@ -227,14 +249,15 @@ class _PatientClinicalHistoryViewState
                 note.treatmentPerformed!.isNotEmpty) ...[
               _buildLabel('Tratamiento'),
               const SizedBox(height: 2),
-              Text(note.treatmentPerformed!,
-                  style: const TextStyle(fontSize: 14)),
+              Text(
+                note.treatmentPerformed!,
+                style: const TextStyle(fontSize: 14),
+              ),
               const SizedBox(height: 10),
             ],
 
             // Observaciones
-            if (note.observations != null &&
-                note.observations!.isNotEmpty) ...[
+            if (note.observations != null && note.observations!.isNotEmpty) ...[
               _buildLabel('Observaciones'),
               const SizedBox(height: 2),
               Text(note.observations!, style: const TextStyle(fontSize: 14)),
@@ -243,7 +266,7 @@ class _PatientClinicalHistoryViewState
 
             // Dientes
             if (note.toothNumbers.isNotEmpty) ...[
-              _buildLabel('Dientes Tratados'),
+              _buildLabel('Dientes tratados'),
               const SizedBox(height: 8),
               OdontogramWidget(
                 selectedTeeth: note.toothNumbers,
@@ -303,8 +326,7 @@ class _PatientClinicalHistoryViewState
                 children: [
                   Row(
                     children: [
-                      const Icon(Icons.description,
-                          color: AppColors.success),
+                      const Icon(Icons.description, color: AppColors.success),
                       const SizedBox(width: 8),
                       const Expanded(
                         child: Text(

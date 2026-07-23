@@ -1,16 +1,18 @@
-import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sistema_dental/core/theme/app_colors.dart';
 import 'package:go_router/go_router.dart';
 import 'package:sistema_dental/features/dentist/presentation/widgets/quick_actions_dialogs.dart';
 import 'package:sistema_dental/features/dentist/presentation/widgets/staff_management_view.dart';
+import 'package:sistema_dental/features/dentist/presentation/widgets/dentist_calendar_view.dart';
 import 'package:file_picker/file_picker.dart' as fp;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:sistema_dental/features/shared/data/appointment_repository.dart';
+import 'package:sistema_dental/core/models/appointment.dart';
 import 'package:sistema_dental/features/shared/presentation/user_profile_view.dart';
 import 'package:sistema_dental/features/dentist/presentation/widgets/clinical_history_view.dart';
 import 'package:intl/intl.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 
 class DentistDashboard extends StatefulWidget {
   const DentistDashboard({super.key});
@@ -48,6 +50,7 @@ class _DentistDashboardState extends State<DentistDashboard> {
           .select('role_in_clinic, clinics(business_name)')
           .eq('user_id', user.id)
           .eq('is_active', true)
+          .inFilter('role_in_clinic', ['owner', 'dentist'])
           .limit(1)
           .maybeSingle();
 
@@ -354,7 +357,8 @@ class _DentistDashboardState extends State<DentistDashboard> {
                 context.go('/mode_selector');
               } else if (value == 'logout') {
                 await Supabase.instance.client.auth.signOut();
-                if (context.mounted) context.go('/login');
+                if (!mounted) return;
+                context.go('/login');
               }
             },
             itemBuilder: (context) => [
@@ -395,7 +399,7 @@ class _DentistDashboardState extends State<DentistDashboard> {
       case 1:
         return const QueueView();
       case 2:
-        return const CalendarView(); // Pacientes Clínicos
+        return const DentistCalendarView();
       case 3:
         return const PatientsView(); // Clientes Asociados
       case 4:
@@ -407,7 +411,7 @@ class _DentistDashboardState extends State<DentistDashboard> {
       case 7:
         return const SettingsView();
       default:
-        return const Center(child: Text('Vista en desarrollo...'));
+        return const SettingsView();
     }
   }
 }
@@ -683,18 +687,41 @@ class _DashboardViewState extends State<DashboardView> {
     );
   }
 
-  Future<void> _showAddPatientDialog() async {
+  Future<String?> _activeDentistClinicId() async {
     final client = Supabase.instance.client;
     final user = client.auth.currentUser;
-    if (user == null) return;
+    if (user == null) return null;
 
-    final membership = await client
-        .from('clinic_memberships')
-        .select('clinic_id')
-        .eq('user_id', user.id)
-        .limit(1)
-        .single();
-    final clinicId = membership['clinic_id'];
+    try {
+      final membership = await client
+          .from('clinic_memberships')
+          .select('clinic_id')
+          .eq('user_id', user.id)
+          .eq('is_active', true)
+          .inFilter('role_in_clinic', ['owner', 'dentist'])
+          .limit(1)
+          .maybeSingle();
+      if (membership != null) return membership['clinic_id'] as String;
+    } catch (error) {
+      debugPrint('Error resolving active dentist clinic: $error');
+    }
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Tu cuenta no tiene una membresía activa como dentista en una clínica. Reactiva el acceso o vuelve a vincular la cuenta con una invitación.',
+          ),
+          backgroundColor: AppColors.error,
+        ),
+      );
+    }
+    return null;
+  }
+
+  Future<void> _showAddPatientDialog() async {
+    final clinicId = await _activeDentistClinicId();
+    if (clinicId == null) return;
 
     if (mounted) {
       final bool? added = await showDialog(
@@ -708,17 +735,8 @@ class _DashboardViewState extends State<DashboardView> {
   }
 
   Future<void> _showScheduleDialog() async {
-    final client = Supabase.instance.client;
-    final user = client.auth.currentUser;
-    if (user == null) return;
-
-    final membership = await client
-        .from('clinic_memberships')
-        .select('clinic_id')
-        .eq('user_id', user.id)
-        .limit(1)
-        .single();
-    final clinicId = membership['clinic_id'];
+    final clinicId = await _activeDentistClinicId();
+    if (clinicId == null) return;
 
     if (mounted) {
       final bool? scheduled = await showDialog(
@@ -737,6 +755,8 @@ class _DashboardViewState extends State<DashboardView> {
         type: fp.FileType.image,
         allowMultiple: false,
       );
+
+      if (!mounted) return;
 
       if (result != null) {
         final fileBytes = result.files.first.bytes;
@@ -778,12 +798,6 @@ class _DashboardViewState extends State<DashboardView> {
     }
   }
 
-  void _generateInvoice() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Generador de Facturas en desarrollo...')),
-    );
-  }
-
   Widget _buildQuickActions() {
     return Container(
       padding: const EdgeInsets.all(24),
@@ -812,7 +826,7 @@ class _DashboardViewState extends State<DashboardView> {
           LayoutBuilder(
             builder: (context, constraints) {
               final columns = constraints.maxWidth > 900
-                  ? 4
+                  ? 3
                   : (constraints.maxWidth > 560 ? 2 : 1);
               final width =
                   (constraints.maxWidth - (columns - 1) * 12) / columns;
@@ -843,14 +857,6 @@ class _DashboardViewState extends State<DashboardView> {
                       Icons.upload_file,
                       'Subir radiografía',
                       onPressed: _uploadXRay,
-                    ),
-                  ),
-                  SizedBox(
-                    width: width,
-                    child: _buildQuickActionLightButton(
-                      Icons.receipt_long,
-                      'Generar factura',
-                      onPressed: _generateInvoice,
                     ),
                   ),
                 ],
@@ -1099,11 +1105,124 @@ class _DashboardViewState extends State<DashboardView> {
   }
 }
 
-class QueueView extends ConsumerWidget {
+class QueueView extends ConsumerStatefulWidget {
   const QueueView({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<QueueView> createState() => _QueueViewState();
+}
+
+class _QueueViewState extends ConsumerState<QueueView> {
+  String _statusFilter = 'all';
+  final Set<String> _temporarilySkipped = {};
+  final Set<String> _updatingAppointments = {};
+
+  Future<void> _changeStatus(
+    Appointment appointment,
+    String newStatus,
+    String successMessage, {
+    bool confirm = false,
+  }) async {
+    if (_updatingAppointments.contains(appointment.id)) return;
+
+    if (confirm) {
+      final accepted = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Confirmar acción'),
+          content: Text(
+            '¿Deseas continuar con ${appointment.patientName ?? 'este paciente'}?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Volver'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('Confirmar'),
+            ),
+          ],
+        ),
+      );
+      if (accepted != true || !mounted) return;
+    }
+
+    setState(() => _updatingAppointments.add(appointment.id));
+    final success = await ref
+        .read(appointmentRepositoryProvider)
+        .updateAppointmentStatus(
+          appointment.id,
+          newStatus,
+          expectedCurrentStatus: appointment.status,
+        );
+
+    if (!mounted) return;
+    setState(() {
+      _updatingAppointments.remove(appointment.id);
+      _temporarilySkipped.remove(appointment.id);
+    });
+
+    if (success) ref.invalidate(clinicQueueProvider);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          success
+              ? successMessage
+              : 'No se pudo actualizar la cita. Es posible que su estado haya cambiado.',
+        ),
+        backgroundColor: success ? AppColors.success : AppColors.error,
+      ),
+    );
+  }
+
+  void _skipTemporarily(Appointment appointment) {
+    setState(() => _temporarilySkipped.add(appointment.id));
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'Paciente pospuesto en esta vista. El reordenamiento permanente se añadirá con el orden de cola.',
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showScheduleDialog() async {
+    final client = Supabase.instance.client;
+    final user = client.auth.currentUser;
+    if (user == null) return;
+
+    try {
+      final membership = await client
+          .from('clinic_memberships')
+          .select('clinic_id')
+          .eq('user_id', user.id)
+          .eq('is_active', true)
+          .inFilter('role_in_clinic', ['owner', 'dentist'])
+          .limit(1)
+          .single();
+      if (!mounted) return;
+
+      final saved = await showDialog<bool>(
+        context: context,
+        builder: (context) => ScheduleAppointmentDialog(
+          clinicId: membership['clinic_id'] as String,
+        ),
+      );
+      if (saved == true) ref.invalidate(clinicQueueProvider);
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('No se pudo abrir el formulario de cita: $error'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final isDesktop = MediaQuery.of(context).size.width > 900;
     final queueAsync = ref.watch(clinicQueueProvider);
 
@@ -1117,9 +1236,14 @@ class QueueView extends ConsumerWidget {
               loading: () => const Center(child: CircularProgressIndicator()),
               error: (err, stack) => Center(child: Text('Error: $err')),
               data: (queue) {
+                final visibleQueue = _statusFilter == 'all'
+                    ? queue
+                    : queue.where((a) => a.status == _statusFilter).toList();
                 final nextAppt = queue
                     .where(
-                      (a) => a.status == 'upcoming' || a.status == 'in_lobby',
+                      (a) =>
+                          a.status == 'in_lobby' &&
+                          !_temporarilySkipped.contains(a.id),
                     )
                     .firstOrNull;
 
@@ -1165,9 +1289,7 @@ class QueueView extends ConsumerWidget {
                                 ),
                                 Flexible(
                                   child: Text(
-                                    nextAppt.status == 'in_lobby'
-                                        ? 'Esperando'
-                                        : 'Próximo',
+                                    'Esperando',
                                     style: const TextStyle(
                                       color: AppColors.textSecondary,
                                     ),
@@ -1197,16 +1319,16 @@ class QueueView extends ConsumerWidget {
                                       Expanded(
                                         flex: 3,
                                         child: ElevatedButton.icon(
-                                          onPressed: () {
-                                            ref
-                                                .read(
-                                                  appointmentRepositoryProvider,
-                                                )
-                                                .updateAppointmentStatus(
-                                                  nextAppt.id,
+                                          onPressed:
+                                              _updatingAppointments.contains(
+                                                nextAppt.id,
+                                              )
+                                              ? null
+                                              : () => _changeStatus(
+                                                  nextAppt,
                                                   'in_treatment',
-                                                );
-                                          },
+                                                  'Paciente llamado a consultorio.',
+                                                ),
                                           style: ElevatedButton.styleFrom(
                                             backgroundColor:
                                                 AppColors.secondaryBlue,
@@ -1224,7 +1346,8 @@ class QueueView extends ConsumerWidget {
                                       Expanded(
                                         flex: 1,
                                         child: OutlinedButton(
-                                          onPressed: () {},
+                                          onPressed: () =>
+                                              _skipTemporarily(nextAppt),
                                           style: OutlinedButton.styleFrom(
                                             padding: const EdgeInsets.symmetric(
                                               vertical: 16,
@@ -1240,16 +1363,16 @@ class QueueView extends ConsumerWidget {
                                         CrossAxisAlignment.stretch,
                                     children: [
                                       ElevatedButton.icon(
-                                        onPressed: () {
-                                          ref
-                                              .read(
-                                                appointmentRepositoryProvider,
-                                              )
-                                              .updateAppointmentStatus(
-                                                nextAppt.id,
+                                        onPressed:
+                                            _updatingAppointments.contains(
+                                              nextAppt.id,
+                                            )
+                                            ? null
+                                            : () => _changeStatus(
+                                                nextAppt,
                                                 'in_treatment',
-                                              );
-                                        },
+                                                'Paciente llamado a consultorio.',
+                                              ),
                                         style: ElevatedButton.styleFrom(
                                           backgroundColor:
                                               AppColors.secondaryBlue,
@@ -1264,7 +1387,8 @@ class QueueView extends ConsumerWidget {
                                       ),
                                       const SizedBox(height: 8),
                                       OutlinedButton(
-                                        onPressed: () {},
+                                        onPressed: () =>
+                                            _skipTemporarily(nextAppt),
                                         style: OutlinedButton.styleFrom(
                                           padding: const EdgeInsets.symmetric(
                                             vertical: 16,
@@ -1278,12 +1402,26 @@ class QueueView extends ConsumerWidget {
                         ),
                       ),
                     if (nextAppt == null)
-                      const Center(
+                      Center(
                         child: Padding(
-                          padding: EdgeInsets.all(32.0),
-                          child: Text(
-                            'No hay pacientes en fila',
-                            style: TextStyle(fontSize: 18, color: Colors.grey),
+                          padding: const EdgeInsets.all(32.0),
+                          child: Column(
+                            children: [
+                              const Text(
+                                'No hay pacientes esperando en sala',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  color: Colors.grey,
+                                ),
+                              ),
+                              if (_temporarilySkipped.isNotEmpty)
+                                TextButton(
+                                  onPressed: () => setState(
+                                    () => _temporarilySkipped.clear(),
+                                  ),
+                                  child: const Text('Restablecer pospuestos'),
+                                ),
+                            ],
                           ),
                         ),
                       ),
@@ -1309,10 +1447,32 @@ class QueueView extends ConsumerWidget {
                                   fontWeight: FontWeight.bold,
                                 ),
                               ),
-                              OutlinedButton.icon(
-                                onPressed: () {},
-                                icon: const Icon(Icons.filter_list, size: 16),
-                                label: const Text('Filter'),
+                              PopupMenuButton<String>(
+                                initialValue: _statusFilter,
+                                onSelected: (value) =>
+                                    setState(() => _statusFilter = value),
+                                itemBuilder: (context) => const [
+                                  PopupMenuItem(
+                                    value: 'all',
+                                    child: Text('Todos'),
+                                  ),
+                                  PopupMenuItem(
+                                    value: 'upcoming',
+                                    child: Text('Pendientes'),
+                                  ),
+                                  PopupMenuItem(
+                                    value: 'in_lobby',
+                                    child: Text('En sala'),
+                                  ),
+                                  PopupMenuItem(
+                                    value: 'in_treatment',
+                                    child: Text('En tratamiento'),
+                                  ),
+                                ],
+                                child: const Chip(
+                                  avatar: Icon(Icons.filter_list, size: 16),
+                                  label: Text('Filtrar'),
+                                ),
                               ),
                             ],
                           ),
@@ -1368,9 +1528,19 @@ class QueueView extends ConsumerWidget {
                                         ),
                                       ),
                                       SizedBox(
-                                        width: 150,
+                                        width: 130,
                                         child: Text(
                                           'Estado',
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.grey,
+                                          ),
+                                        ),
+                                      ),
+                                      SizedBox(
+                                        width: 190,
+                                        child: Text(
+                                          'Acciones',
                                           style: TextStyle(
                                             fontWeight: FontWeight.bold,
                                             color: Colors.grey,
@@ -1380,7 +1550,7 @@ class QueueView extends ConsumerWidget {
                                     ],
                                   ),
                                   const Divider(),
-                                  ...queue.map((appt) {
+                                  ...visibleQueue.map((appt) {
                                     final statusStr =
                                         appt.status == 'in_treatment'
                                         ? 'En Tratamiento'
@@ -1403,6 +1573,7 @@ class QueueView extends ConsumerWidget {
                                           ).format(appt.dateTime),
                                           statusStr,
                                           color,
+                                          appt,
                                         ),
                                         const Divider(),
                                       ],
@@ -1423,7 +1594,7 @@ class QueueView extends ConsumerWidget {
         ),
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: () {},
+        onPressed: _showScheduleDialog,
         backgroundColor: AppColors.primaryBlue,
         child: const Icon(Icons.add, color: Colors.white),
       ),
@@ -1437,6 +1608,7 @@ class QueueView extends ConsumerWidget {
     String wait,
     String status,
     Color statusColor,
+    Appointment appointment,
   ) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 12.0),
@@ -1461,7 +1633,7 @@ class QueueView extends ConsumerWidget {
             ),
           ),
           SizedBox(
-            width: 150,
+            width: 130,
             child: Text(
               service,
               style: const TextStyle(color: Colors.grey),
@@ -1488,55 +1660,77 @@ class QueueView extends ConsumerWidget {
               ],
             ),
           ),
+          SizedBox(
+            width: 190,
+            child: _updatingAppointments.contains(appointment.id)
+                ? const Align(
+                    alignment: Alignment.centerLeft,
+                    child: SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  )
+                : Wrap(
+                    spacing: 4,
+                    children: [
+                      if (appointment.status == 'upcoming')
+                        IconButton(
+                          tooltip: 'Marcar llegada',
+                          onPressed: () => _changeStatus(
+                            appointment,
+                            'in_lobby',
+                            'Llegada registrada.',
+                          ),
+                          icon: const Icon(
+                            Icons.login,
+                            color: AppColors.warning,
+                          ),
+                        ),
+                      if (appointment.status == 'in_lobby')
+                        IconButton(
+                          tooltip: 'Llamar a consultorio',
+                          onPressed: () => _changeStatus(
+                            appointment,
+                            'in_treatment',
+                            'Paciente llamado a consultorio.',
+                          ),
+                          icon: const Icon(
+                            Icons.campaign,
+                            color: AppColors.primaryBlue,
+                          ),
+                        ),
+                      if (appointment.status == 'in_treatment')
+                        IconButton(
+                          tooltip: 'Completar consulta',
+                          onPressed: () => _changeStatus(
+                            appointment,
+                            'completed',
+                            'Consulta completada.',
+                            confirm: true,
+                          ),
+                          icon: const Icon(
+                            Icons.check_circle,
+                            color: AppColors.success,
+                          ),
+                        ),
+                      IconButton(
+                        tooltip: 'Cancelar cita',
+                        onPressed: () => _changeStatus(
+                          appointment,
+                          'cancelled',
+                          'Cita cancelada.',
+                          confirm: true,
+                        ),
+                        icon: const Icon(
+                          Icons.cancel_outlined,
+                          color: AppColors.error,
+                        ),
+                      ),
+                    ],
+                  ),
+          ),
         ],
-      ),
-    );
-  }
-}
-
-class CalendarView extends StatelessWidget {
-  const CalendarView({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Calendario e Historial',
-              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-            ),
-            const Text(
-              'Gestión centralizada de citas.',
-              style: TextStyle(color: Colors.grey),
-            ),
-            const SizedBox(height: 24),
-            // Calendario simulado
-            Container(
-              height: 500,
-              width: double.infinity,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                border: Border.all(color: Colors.grey.shade300),
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: const Center(
-                child: Text(
-                  'Vista de Calendario Semanal (Componente Dinámico)',
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {},
-        backgroundColor: AppColors.secondaryBlue,
-        child: const Icon(Icons.add, color: Colors.white),
       ),
     );
   }
@@ -1712,202 +1906,6 @@ class _PatientsViewState extends State<PatientsView> {
   }
 }
 
-class CoworkersView extends StatefulWidget {
-  const CoworkersView({super.key});
-
-  @override
-  State<CoworkersView> createState() => _CoworkersViewState();
-}
-
-class _CoworkersViewState extends State<CoworkersView> {
-  late Future<List<Map<String, dynamic>>> _coworkersFuture;
-
-  @override
-  void initState() {
-    super.initState();
-    _fetchCoworkers();
-  }
-
-  void _fetchCoworkers() {
-    final client = Supabase.instance.client;
-    final user = client.auth.currentUser;
-
-    if (user == null) {
-      _coworkersFuture = Future.value([]);
-      return;
-    }
-
-    _coworkersFuture = client
-        .from('clinic_memberships')
-        .select('clinic_id, role_in_clinic, profiles(name)')
-        .eq('user_id', user.id)
-        .inFilter('role_in_clinic', ['owner', 'dentist'])
-        .eq('is_active', true)
-        .limit(1)
-        .then((memberships) {
-          if (memberships.isEmpty) return [];
-
-          final clinicId = memberships[0]['clinic_id'];
-
-          return client
-              .from('clinic_memberships')
-              .select('role_in_clinic, profiles(name)')
-              .eq('clinic_id', clinicId)
-              .inFilter('role_in_clinic', ['owner', 'dentist', 'secretary'])
-              .eq('is_active', true);
-        });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Compañeros de Trabajo',
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-                color: AppColors.primaryBlue,
-              ),
-            ),
-            const Text(
-              'Gestiona al personal administrativo y médico de la clínica.',
-              style: TextStyle(color: Colors.grey),
-            ),
-            const SizedBox(height: 32),
-            Container(
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: Colors.grey.shade200),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Personal Activo',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 16),
-                  const Divider(),
-                  FutureBuilder<List<Map<String, dynamic>>>(
-                    future: _coworkersFuture,
-                    builder: (context, snapshot) {
-                      if (snapshot.connectionState == ConnectionState.waiting) {
-                        return const Center(child: CircularProgressIndicator());
-                      }
-                      if (snapshot.hasError) {
-                        return const Center(
-                          child: Text('Error al cargar compañeros'),
-                        );
-                      }
-                      final coworkers = snapshot.data ?? [];
-                      if (coworkers.isEmpty) {
-                        return const Padding(
-                          padding: EdgeInsets.all(16.0),
-                          child: Text('No hay compañeros registrados.'),
-                        );
-                      }
-
-                      return Column(
-                        children: coworkers.map((cw) {
-                          final role = cw['role_in_clinic'] as String;
-                          final name = cw['profiles'] != null
-                              ? cw['profiles']['name']
-                              : 'Desconocido';
-                          String roleDisplay = 'Secretaria';
-                          IconData icon = Icons.support_agent;
-                          if (role == 'owner') {
-                            roleDisplay = 'Dentista Principal (Dueño)';
-                            icon = Icons.medical_services;
-                          } else if (role == 'dentist') {
-                            roleDisplay = 'Dentista Ayudante';
-                            icon = Icons.medical_services;
-                          }
-
-                          return Column(
-                            children: [
-                              _buildCoworkerRow(
-                                name,
-                                roleDisplay,
-                                icon,
-                                isAssistant:
-                                    role == 'dentist' || role == 'secretary',
-                              ),
-                              const Divider(),
-                            ],
-                          );
-                        }).toList(),
-                      );
-                    },
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildCoworkerRow(
-    String name,
-    String role,
-    IconData icon, {
-    bool isAssistant = false,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Row(
-            children: [
-              CircleAvatar(
-                backgroundColor: AppColors.lightBlueAccent,
-                child: Icon(icon, color: AppColors.primaryBlue),
-              ),
-              const SizedBox(width: 16),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    name,
-                    style: const TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  Text(
-                    role,
-                    style: const TextStyle(color: Colors.grey, fontSize: 12),
-                  ),
-                ],
-              ),
-            ],
-          ),
-          if (isAssistant)
-            TextButton.icon(
-              onPressed: () {},
-              icon: const Icon(
-                Icons.remove_circle_outline,
-                color: AppColors.error,
-                size: 16,
-              ),
-              label: const Text(
-                'Remover acceso',
-                style: TextStyle(color: AppColors.error),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
 class QRCodeView extends StatefulWidget {
   const QRCodeView({super.key});
 
@@ -1916,85 +1914,84 @@ class QRCodeView extends StatefulWidget {
 }
 
 class _QRCodeViewState extends State<QRCodeView> {
+  String? _clinicId;
   String? _invitationCode;
+  DateTime? _expiresAt;
+  String _targetRole = 'client';
   bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    _fetchOrGenerateCode();
+    _loadClinic();
   }
 
-  Future<void> _fetchOrGenerateCode() async {
+  Future<void> _loadClinic() async {
     final client = Supabase.instance.client;
     final user = client.auth.currentUser;
-    if (user == null) return;
+    if (user == null) {
+      setState(() => _isLoading = false);
+      return;
+    }
 
     try {
-      // Find clinic
-      final memberships = await client
+      final membership = await client
           .from('clinic_memberships')
           .select('clinic_id')
           .eq('user_id', user.id)
           .inFilter('role_in_clinic', ['owner', 'dentist'])
           .eq('is_active', true)
-          .limit(1);
-
-      if (memberships.isEmpty) {
-        setState(() => _isLoading = false);
-        return;
-      }
-
-      final clinicId = memberships[0]['clinic_id'];
-
-      // Check for existing valid code
-      final existingCodes = await client
-          .from('invitation_codes')
-          .select('code')
-          .eq('clinic_id', clinicId)
-          .eq('is_used', false)
-          .gte('expires_at', DateTime.now().toUtc().toIso8601String())
-          .limit(1);
-
-      if (existingCodes.isNotEmpty) {
-        setState(() {
-          _invitationCode = existingCodes[0]['code'];
-          _isLoading = false;
-        });
-        return;
-      }
-
-      // Generate new code: e.g., DENT-XXXXXX
-      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-      final random = Random();
-      final codeSuffix = String.fromCharCodes(
-        Iterable.generate(
-          6,
-          (_) => chars.codeUnitAt(random.nextInt(chars.length)),
-        ),
-      );
-      final newCode = 'DENT-$codeSuffix';
-
-      await client.from('invitation_codes').insert({
-        'clinic_id': clinicId,
-        'code': newCode,
-        'created_by': user.id,
-        'is_used': false,
-        'expires_at': DateTime.now()
-            .toUtc()
-            .add(const Duration(days: 1))
-            .toIso8601String(),
-      });
-
+          .limit(1)
+          .maybeSingle();
+      if (!mounted) return;
       setState(() {
-        _invitationCode = newCode;
+        _clinicId = membership?['clinic_id'] as String?;
         _isLoading = false;
       });
     } catch (e) {
-      debugPrint('Error fetch/generate code: $e');
-      setState(() => _isLoading = false);
+      debugPrint('Error loading invitation clinic: $e');
+      if (mounted) setState(() => _isLoading = false);
     }
   }
+
+  Future<void> _generateInvitation() async {
+    final clinicId = _clinicId;
+    if (clinicId == null) return;
+    setState(() => _isLoading = true);
+
+    try {
+      final result = await Supabase.instance.client.rpc(
+        'create_role_invitation',
+        params: {'p_clinic_id': clinicId, 'p_target_role': _targetRole},
+      );
+      final data = Map<String, dynamic>.from(result as Map);
+      if (!mounted) return;
+      setState(() {
+        _invitationCode = data['code'] as String;
+        _expiresAt = DateTime.parse(data['expires_at'] as String).toLocal();
+        _isLoading = false;
+      });
+    } on PostgrestException catch (error) {
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            error.code == 'PGRST202'
+                ? 'Falta instalar la migración de invitaciones QR.'
+                : 'No se pudo generar la invitación: ${error.message}',
+          ),
+          backgroundColor: AppColors.error,
+        ),
+      );
+    }
+  }
+
+  String get _roleLabel => switch (_targetRole) {
+    'dentist' => 'Dentista',
+    'secretary' => 'Secretaria',
+    _ => 'Paciente / cliente',
+  };
 
   @override
   Widget build(BuildContext context) {
@@ -2032,60 +2029,129 @@ class _QRCodeViewState extends State<QRCodeView> {
                 ),
                 const SizedBox(height: 12),
                 const Text(
-                  'Muestra este código a pacientes, secretarias o dentistas ayudantes. La aplicación detectará automáticamente su rol.',
+                  'Selecciona el rol antes de generar. El rol queda protegido dentro de la invitación y no puede cambiarse al escanear.',
                   textAlign: TextAlign.center,
                   style: TextStyle(color: Colors.grey, height: 1.5),
                 ),
                 const SizedBox(height: 40),
                 if (_isLoading)
                   const CircularProgressIndicator()
-                else if (_invitationCode == null)
+                else if (_clinicId == null)
                   const Text(
                     'No perteneces a ninguna clínica. Contacta al soporte o crea una nueva.',
                     style: TextStyle(color: Colors.red),
                   )
                 else ...[
-                  Container(
-                    width: 250,
-                    height: 250,
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade100,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: Colors.grey.shade300),
+                  DropdownButtonFormField<String>(
+                    initialValue: _targetRole,
+                    decoration: const InputDecoration(
+                      labelText: 'Rol de la invitación',
+                      prefixIcon: Icon(Icons.badge_outlined),
                     ),
-                    child: const Center(
-                      child: Icon(
-                        Icons.qr_code_2,
-                        size: 200,
-                        color: AppColors.primaryBlue,
+                    items: const [
+                      DropdownMenuItem(
+                        value: 'client',
+                        child: Text('Paciente / cliente'),
                       ),
+                      DropdownMenuItem(
+                        value: 'dentist',
+                        child: Text('Dentista'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'secretary',
+                        child: Text('Secretaria'),
+                      ),
+                    ],
+                    onChanged: (value) {
+                      if (value == null) return;
+                      setState(() {
+                        _targetRole = value;
+                        _invitationCode = null;
+                        _expiresAt = null;
+                      });
+                    },
+                  ),
+                  const SizedBox(height: 20),
+                  FilledButton.icon(
+                    onPressed: _generateInvitation,
+                    icon: const Icon(Icons.qr_code_2),
+                    label: Text(
+                      _invitationCode == null
+                          ? 'Generar código QR'
+                          : 'Generar otro código QR',
                     ),
                   ),
-                  const SizedBox(height: 32),
-                  const Text(
-                    'O ingresa este código manualmente:',
-                    style: TextStyle(color: Colors.grey),
-                  ),
-                  const SizedBox(height: 12),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 24,
-                      vertical: 12,
-                    ),
-                    decoration: BoxDecoration(
-                      color: AppColors.lightBlueAccent,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      _invitationCode!,
+                  if (_invitationCode != null) ...[
+                    const SizedBox(height: 24),
+                    Text(
+                      'Invitación para $_roleLabel',
                       style: const TextStyle(
-                        fontSize: 28,
                         fontWeight: FontWeight.bold,
-                        letterSpacing: 6,
                         color: AppColors.primaryBlue,
                       ),
                     ),
-                  ),
+                    const SizedBox(height: 12),
+                    Container(
+                      width: 250,
+                      height: 250,
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade100,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: Colors.grey.shade300),
+                      ),
+                      padding: const EdgeInsets.all(14),
+                      child: QrImageView(
+                        data:
+                            'dentalsync://invite?code=${Uri.encodeQueryComponent(_invitationCode!)}',
+                        version: QrVersions.auto,
+                        backgroundColor: Colors.white,
+                        eyeStyle: const QrEyeStyle(
+                          eyeShape: QrEyeShape.square,
+                          color: AppColors.primaryBlue,
+                        ),
+                        dataModuleStyle: const QrDataModuleStyle(
+                          dataModuleShape: QrDataModuleShape.square,
+                          color: AppColors.primaryBlue,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 32),
+                    const Text(
+                      'O ingresa este código manualmente:',
+                      style: TextStyle(color: Colors.grey),
+                    ),
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 24,
+                        vertical: 12,
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppColors.lightBlueAccent,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        _invitationCode!,
+                        style: const TextStyle(
+                          fontSize: 28,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 6,
+                          color: AppColors.primaryBlue,
+                        ),
+                      ),
+                    ),
+                    if (_expiresAt != null) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        'Válido hasta ${DateFormat('dd/MM/yyyy HH:mm').format(_expiresAt!)} · Un solo uso',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: AppColors.textSecondary,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ],
                 ],
               ],
             ),

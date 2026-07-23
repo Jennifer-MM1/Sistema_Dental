@@ -169,12 +169,12 @@ class LoginNotifier extends Notifier<LoginState> {
     state = const LoginState();
   }
 
-  /// Vincula al usuario con una clínica usando el código de invitación y un rol específico.
-  Future<bool> linkWithCode(String code, String role) async {
+  /// Vincula al usuario con el rol guardado en la invitación.
+  Future<bool> linkWithCode(String code) async {
     state = state.copyWith(isLoading: true, errorMessage: null);
 
     final repo = ref.read(authRepositoryProvider);
-    final roleResult = await repo.linkClinicWithCode(code, role);
+    final roleResult = await repo.linkClinicWithCode(code);
     final success = roleResult != null;
 
     if (!success) {

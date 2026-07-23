@@ -54,25 +54,33 @@ class PatientSelector extends ConsumerWidget {
                         height: 60,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          color: isSelected ? AppColors.primaryBlue : Colors.white,
+                          color: isSelected
+                              ? AppColors.primaryBlue
+                              : Colors.white,
                           border: Border.all(
-                            color: isSelected ? AppColors.primaryBlue : Colors.grey.shade300,
+                            color: isSelected
+                                ? AppColors.primaryBlue
+                                : Colors.grey.shade300,
                             width: 2,
                           ),
                           boxShadow: isSelected
                               ? [
                                   BoxShadow(
-                                    color: AppColors.primaryBlue.withValues(alpha: 0.3),
+                                    color: AppColors.primaryBlue.withValues(
+                                      alpha: 0.3,
+                                    ),
                                     blurRadius: 8,
                                     offset: const Offset(0, 4),
-                                  )
+                                  ),
                                 ]
                               : null,
                         ),
                         child: Center(
                           child: Icon(
                             _getIconForRelationship(patient.relationship),
-                            color: isSelected ? Colors.white : Colors.grey.shade500,
+                            color: isSelected
+                                ? Colors.white
+                                : Colors.grey.shade500,
                             size: 28,
                           ),
                         ),
@@ -82,8 +90,12 @@ class PatientSelector extends ConsumerWidget {
                         patient.firstName,
                         style: TextStyle(
                           fontSize: 12,
-                          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                          color: isSelected ? AppColors.primaryBlue : Colors.grey.shade600,
+                          fontWeight: isSelected
+                              ? FontWeight.bold
+                              : FontWeight.normal,
+                          color: isSelected
+                              ? AppColors.primaryBlue
+                              : Colors.grey.shade600,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -141,20 +153,13 @@ class PatientSelector extends ConsumerWidget {
                 ),
               ),
               child: Center(
-                child: Icon(
-                  Icons.add,
-                  color: Colors.grey.shade500,
-                  size: 28,
-                ),
+                child: Icon(Icons.add, color: Colors.grey.shade500, size: 28),
               ),
             ),
             const SizedBox(height: 8),
             Text(
               'Añadir',
-              style: TextStyle(
-                fontSize: 12,
-                color: Colors.grey.shade600,
-              ),
+              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
               textAlign: TextAlign.center,
             ),
           ],
@@ -168,10 +173,12 @@ class _AddFamilyMemberDialog extends ConsumerStatefulWidget {
   const _AddFamilyMemberDialog();
 
   @override
-  ConsumerState<_AddFamilyMemberDialog> createState() => _AddFamilyMemberDialogState();
+  ConsumerState<_AddFamilyMemberDialog> createState() =>
+      _AddFamilyMemberDialogState();
 }
 
-class _AddFamilyMemberDialogState extends ConsumerState<_AddFamilyMemberDialog> {
+class _AddFamilyMemberDialogState
+    extends ConsumerState<_AddFamilyMemberDialog> {
   final _formKey = GlobalKey<FormState>();
   String _firstName = '';
   String _lastName = '';
@@ -179,21 +186,26 @@ class _AddFamilyMemberDialogState extends ConsumerState<_AddFamilyMemberDialog> 
   bool _isLoading = false;
 
   final List<String> _relationships = ['child', 'spouse', 'parent', 'other'];
-  
+
   String _translateRelationship(String rel) {
     switch (rel) {
-      case 'child': return 'Hijo/a';
-      case 'spouse': return 'Cónyuge';
-      case 'parent': return 'Padre/Madre';
-      case 'other': return 'Otro';
-      default: return rel;
+      case 'child':
+        return 'Hijo/a';
+      case 'spouse':
+        return 'Cónyuge';
+      case 'parent':
+        return 'Padre/Madre';
+      case 'other':
+        return 'Otro';
+      default:
+        return rel;
     }
   }
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
     _formKey.currentState!.save();
-    
+
     setState(() => _isLoading = true);
 
     final currentUser = ref.read(currentUserProvider).value;
@@ -204,13 +216,18 @@ class _AddFamilyMemberDialogState extends ConsumerState<_AddFamilyMemberDialog> 
 
     final repo = ref.read(patientRepositoryProvider);
     final selectedPatient = ref.read(selectedPatientProvider);
-    final clinicId = selectedPatient?.clinicId ?? await repo.getPrimaryClinicIdForUser(currentUser.id);
+    final clinicId =
+        selectedPatient?.clinicId ??
+        await repo.getPrimaryClinicIdForUser(currentUser.id);
 
     if (clinicId == null) {
       setState(() => _isLoading = false);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Primero vincula tu cuenta a una clínica.'), backgroundColor: AppColors.error),
+          const SnackBar(
+            content: Text('Primero vincula tu cuenta a una clínica.'),
+            backgroundColor: AppColors.error,
+          ),
         );
       }
       return;
@@ -230,11 +247,17 @@ class _AddFamilyMemberDialogState extends ConsumerState<_AddFamilyMemberDialog> 
       ref.invalidate(familyPatientsProvider);
       Navigator.of(context).pop();
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Familiar añadido con éxito'), backgroundColor: AppColors.success),
+        const SnackBar(
+          content: Text('Familiar añadido con éxito'),
+          backgroundColor: AppColors.success,
+        ),
       );
     } else if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Error al añadir familiar'), backgroundColor: AppColors.error),
+        const SnackBar(
+          content: Text('Error al añadir familiar'),
+          backgroundColor: AppColors.error,
+        ),
       );
     }
   }
@@ -242,29 +265,43 @@ class _AddFamilyMemberDialogState extends ConsumerState<_AddFamilyMemberDialog> 
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('Añadir Familiar'),
+      title: const Text('Añadir familiar'),
       content: Form(
         key: _formKey,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             TextFormField(
-              decoration: const InputDecoration(labelText: 'Nombre', border: OutlineInputBorder()),
-              validator: (val) => val == null || val.isEmpty ? 'Requerido' : null,
+              decoration: const InputDecoration(
+                labelText: 'Nombre',
+                border: OutlineInputBorder(),
+              ),
+              validator: (val) =>
+                  val == null || val.isEmpty ? 'Requerido' : null,
               onSaved: (val) => _firstName = val!.trim(),
             ),
             const SizedBox(height: 16),
             TextFormField(
-              decoration: const InputDecoration(labelText: 'Apellido', border: OutlineInputBorder()),
-              validator: (val) => val == null || val.isEmpty ? 'Requerido' : null,
+              decoration: const InputDecoration(
+                labelText: 'Apellido',
+                border: OutlineInputBorder(),
+              ),
+              validator: (val) =>
+                  val == null || val.isEmpty ? 'Requerido' : null,
               onSaved: (val) => _lastName = val!.trim(),
             ),
             const SizedBox(height: 16),
             DropdownButtonFormField<String>(
               initialValue: _relationship,
-              decoration: const InputDecoration(labelText: 'Parentesco', border: OutlineInputBorder()),
+              decoration: const InputDecoration(
+                labelText: 'Parentesco',
+                border: OutlineInputBorder(),
+              ),
               items: _relationships.map((rel) {
-                return DropdownMenuItem(value: rel, child: Text(_translateRelationship(rel)));
+                return DropdownMenuItem(
+                  value: rel,
+                  child: Text(_translateRelationship(rel)),
+                );
               }).toList(),
               onChanged: (val) {
                 if (val != null) setState(() => _relationship = val);
@@ -280,8 +317,20 @@ class _AddFamilyMemberDialogState extends ConsumerState<_AddFamilyMemberDialog> 
         ),
         ElevatedButton(
           onPressed: _isLoading ? null : _submit,
-          style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryBlue, foregroundColor: Colors.white),
-          child: _isLoading ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Text('Guardar'),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppColors.primaryBlue,
+            foregroundColor: Colors.white,
+          ),
+          child: _isLoading
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                    color: Colors.white,
+                    strokeWidth: 2,
+                  ),
+                )
+              : const Text('Guardar'),
         ),
       ],
     );

@@ -2,12 +2,22 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:sistema_dental/core/theme/app_colors.dart';
 import 'package:sistema_dental/core/models/doctor.dart';
+import 'package:sistema_dental/features/auth/data/auth_repository.dart';
 import 'package:sistema_dental/features/dentist/data/staff_repository.dart';
 
 /// Vista completa de gestión de personal: consultorios, disponibilidad,
 /// horarios semanales y días libres. Reemplaza la CoworkersView básica.
 class StaffManagementView extends StatefulWidget {
-  const StaffManagementView({super.key});
+  const StaffManagementView({
+    super.key,
+    this.dentistsOnly = false,
+    this.showInviteAction = false,
+    this.includeInactiveMembers = false,
+  });
+
+  final bool dentistsOnly;
+  final bool showInviteAction;
+  final bool includeInactiveMembers;
 
   @override
   State<StaffManagementView> createState() => _StaffManagementViewState();
@@ -59,7 +69,19 @@ class _StaffManagementViewState extends State<StaffManagementView> {
       if (role == 'owner' || role == 'dentist') {
         await _repo.ensureDoctorRecord(userId: user.id, clinicId: _clinicId!);
       }
-      _staff = await _repo.getStaffInClinic(_clinicId!);
+      final staff = await _repo.getStaffInClinic(
+        _clinicId!,
+        includeInactive: widget.includeInactiveMembers,
+      );
+      _staff = widget.dentistsOnly
+          ? staff
+                .where(
+                  (member) =>
+                      member.roleInClinic == 'owner' ||
+                      member.roleInClinic == 'dentist',
+                )
+                .toList()
+          : staff;
     } catch (e) {
       debugPrint('Error loading staff: $e');
       _loadError = 'No se pudo cargar el personal de la clínica.';
@@ -67,9 +89,63 @@ class _StaffManagementViewState extends State<StaffManagementView> {
     setState(() => _isLoading = false);
   }
 
+  Future<void> _showDentistInvitation() async {
+    final clinicId = _clinicId;
+    if (clinicId == null) return;
+
+    final code = await AuthRepository(
+      Supabase.instance.client,
+    ).generateInvitationCode(clinicId, targetRole: 'dentist');
+    if (!mounted) return;
+    if (code == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No se pudo generar el cÃ³digo de invitaciÃ³n.'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+      return;
+    }
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Invitar dentista'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'El dentista debe crear su cuenta, seleccionar el rol Dentista e ingresar este cÃ³digo. Es vÃ¡lido por 24 horas y se usa una sola vez.',
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 20),
+            SelectableText(
+              code,
+              style: const TextStyle(
+                fontSize: 26,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 4,
+                color: AppColors.primaryBlue,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cerrar'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDesktop = MediaQuery.of(context).size.width > 900;
+    final activeStaffCount = _staff
+        .where((member) => member.isMembershipActive)
+        .length;
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -100,7 +176,7 @@ class _StaffManagementViewState extends State<StaffManagementView> {
                                 ),
                               ),
                               Text(
-                                '${_staff.length} miembro${_staff.length != 1 ? "s" : ""} activos en la clínica',
+                                '$activeStaffCount miembro${activeStaffCount != 1 ? "s" : ""} activos en la clínica',
                                 style: const TextStyle(
                                   color: AppColors.textSecondary,
                                 ),
@@ -108,6 +184,18 @@ class _StaffManagementViewState extends State<StaffManagementView> {
                             ],
                           ),
                         ),
+                        if (widget.showInviteAction) ...[
+                          FilledButton.icon(
+                            onPressed: _clinicId == null
+                                ? null
+                                : _showDentistInvitation,
+                            icon: const Icon(Icons.person_add_alt_1, size: 18),
+                            label: Text(
+                              isDesktop ? 'Invitar dentista' : 'Invitar',
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                        ],
                         ElevatedButton.icon(
                           onPressed: _loadData,
                           icon: const Icon(Icons.refresh, size: 18),
@@ -192,13 +280,17 @@ class _StaffManagementViewState extends State<StaffManagementView> {
 
   Widget _buildStatsRow() {
     final dentists = _staff
-        .where((s) => s.roleInClinic == 'owner' || s.roleInClinic == 'dentist')
+        .where(
+          (s) =>
+              s.isMembershipActive &&
+              (s.roleInClinic == 'owner' || s.roleInClinic == 'dentist'),
+        )
         .length;
     final secretaries = _staff
-        .where((s) => s.roleInClinic == 'secretary')
+        .where((s) => s.isMembershipActive && s.roleInClinic == 'secretary')
         .length;
     final available = _staff
-        .where((s) => s.isAvailable && s.hasDocRecord)
+        .where((s) => s.isMembershipActive && s.isAvailable && s.hasDocRecord)
         .length;
 
     return LayoutBuilder(
@@ -383,6 +475,12 @@ class _StaffCardState extends State<_StaffCard> {
     _member = widget.member;
   }
 
+  @override
+  void didUpdateWidget(covariant _StaffCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.member != widget.member) _member = widget.member;
+  }
+
   Color get _roleColor {
     switch (_member.roleInClinic) {
       case 'owner':
@@ -461,6 +559,15 @@ class _StaffCardState extends State<_StaffCard> {
                       ),
                       overflow: TextOverflow.ellipsis,
                     ),
+                    if (!_member.isMembershipActive)
+                      const Text(
+                        'Acceso inactivo',
+                        style: TextStyle(
+                          color: AppColors.error,
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                     const SizedBox(height: 2),
                     Container(
                       padding: const EdgeInsets.symmetric(
@@ -493,7 +600,9 @@ class _StaffCardState extends State<_StaffCard> {
                     scale: 0.85,
                     child: Switch(
                       value: _member.isAvailable,
-                      onChanged: _isSaving ? null : _toggleAvailability,
+                      onChanged: _isSaving || !_member.isMembershipActive
+                          ? null
+                          : _toggleAvailability,
                       activeThumbColor: AppColors.success,
                     ),
                   ),
@@ -543,12 +652,21 @@ class _StaffCardState extends State<_StaffCard> {
                   color: AppColors.textSecondary,
                 ),
                 const SizedBox(width: 6),
-                Text(
-                  'Especialidad: ${_member.specialty}',
-                  style: const TextStyle(
-                    fontSize: 13,
-                    color: AppColors.textSecondary,
+                Expanded(
+                  child: Text(
+                    'Especialidad: ${_member.specialty}',
+                    style: const TextStyle(
+                      fontSize: 13,
+                      color: AppColors.textSecondary,
+                    ),
+                    overflow: TextOverflow.ellipsis,
                   ),
+                ),
+                IconButton(
+                  tooltip: 'Editar especialidad',
+                  visualDensity: VisualDensity.compact,
+                  onPressed: _member.isMembershipActive ? _editSpecialty : null,
+                  icon: const Icon(Icons.edit_outlined, size: 17),
                 ),
               ],
             ),
@@ -577,6 +695,15 @@ class _StaffCardState extends State<_StaffCard> {
                 ],
               ),
             ),
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: _isSaving ? null : _configureDoctorRecord,
+                icon: const Icon(Icons.settings_suggest_outlined),
+                label: const Text('Configurar dentista'),
+              ),
+            ),
           ],
 
           const SizedBox(height: 12),
@@ -587,7 +714,9 @@ class _StaffCardState extends State<_StaffCard> {
               if (_member.hasDocRecord) ...[
                 Expanded(
                   child: OutlinedButton.icon(
-                    onPressed: () => _showScheduleSheet(context),
+                    onPressed: _member.isMembershipActive
+                        ? () => _showScheduleSheet(context)
+                        : null,
                     icon: const Icon(Icons.schedule, size: 16),
                     label: const Text(
                       'Horario',
@@ -605,7 +734,9 @@ class _StaffCardState extends State<_StaffCard> {
                 const SizedBox(width: 8),
                 Expanded(
                   child: OutlinedButton.icon(
-                    onPressed: () => _showDaysOffDialog(context),
+                    onPressed: _member.isMembershipActive
+                        ? () => _showDaysOffDialog(context)
+                        : null,
                     icon: const Icon(Icons.event_busy, size: 16),
                     label: const Text(
                       'Días Libres',
@@ -624,14 +755,24 @@ class _StaffCardState extends State<_StaffCard> {
               if (_member.roleInClinic != 'owner') ...[
                 if (_member.hasDocRecord) const SizedBox(width: 8),
                 IconButton(
-                  onPressed: () => _confirmRemoveAccess(context),
-                  icon: const Icon(
-                    Icons.remove_circle_outline,
-                    color: AppColors.error,
+                  onPressed: () => _confirmToggleAccess(context),
+                  icon: Icon(
+                    _member.isMembershipActive
+                        ? Icons.remove_circle_outline
+                        : Icons.restore,
+                    color: _member.isMembershipActive
+                        ? AppColors.error
+                        : AppColors.success,
                   ),
-                  tooltip: 'Remover acceso',
+                  tooltip: _member.isMembershipActive
+                      ? 'Desactivar acceso'
+                      : 'Reactivar acceso',
                   style: IconButton.styleFrom(
-                    backgroundColor: AppColors.error.withAlpha(15),
+                    backgroundColor:
+                        (_member.isMembershipActive
+                                ? AppColors.error
+                                : AppColors.success)
+                            .withAlpha(15),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(8),
                     ),
@@ -645,6 +786,58 @@ class _StaffCardState extends State<_StaffCard> {
     );
   }
 
+  Future<void> _editSpecialty() async {
+    final doctorRecordId = _member.doctorRecordId;
+    if (doctorRecordId == null) return;
+    final specialty = await showDialog<String>(
+      context: context,
+      builder: (_) =>
+          _EditSpecialtyDialog(initialValue: _member.specialty ?? ''),
+    );
+    if (specialty == null || !mounted) return;
+
+    setState(() => _isSaving = true);
+    final ok = await widget.repo.updateDoctorSpecialty(
+      doctorRecordId: doctorRecordId,
+      specialty: specialty,
+    );
+    if (!mounted) return;
+    setState(() {
+      _isSaving = false;
+      if (ok) _member = _member.copyWith(specialty: specialty);
+    });
+    if (!ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            widget.repo.lastError ?? 'No se pudo actualizar la especialidad.',
+          ),
+          backgroundColor: AppColors.error,
+        ),
+      );
+    }
+  }
+
+  Future<void> _configureDoctorRecord() async {
+    setState(() => _isSaving = true);
+    final recordId = await widget.repo.ensureDoctorRecord(
+      userId: _member.userId,
+      clinicId: widget.clinicId,
+    );
+    if (!mounted) return;
+    setState(() => _isSaving = false);
+    if (recordId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No se pudo configurar el registro del dentista.'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+      return;
+    }
+    widget.onRefresh();
+  }
+
   Future<void> _toggleAvailability(bool val) async {
     if (_member.doctorRecordId == null) return;
     setState(() => _isSaving = true);
@@ -652,7 +845,18 @@ class _StaffCardState extends State<_StaffCard> {
       doctorRecordId: _member.doctorRecordId!,
       isAvailable: val,
     );
-    if (ok) setState(() => _member = _member.copyWith(isAvailable: val));
+    if (ok) {
+      setState(() => _member = _member.copyWith(isAvailable: val));
+    } else if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            widget.repo.lastError ?? 'No se pudo cambiar la disponibilidad.',
+          ),
+          backgroundColor: AppColors.error,
+        ),
+      );
+    }
     setState(() => _isSaving = false);
   }
 
@@ -662,10 +866,38 @@ class _StaffCardState extends State<_StaffCard> {
       doctorRecordId: _member.doctorRecordId!,
       cabin: cabin,
     );
-    if (ok) setState(() => _member = _member.copyWith(cabinAssigned: cabin));
+    if (ok) {
+      setState(() => _member = _member.copyWith(cabinAssigned: cabin));
+    } else if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            widget.repo.lastError ?? 'No se pudo actualizar el consultorio.',
+          ),
+          backgroundColor: AppColors.error,
+        ),
+      );
+    }
   }
 
-  Future<void> _confirmRemoveAccess(BuildContext context) async {
+  Future<void> _confirmToggleAccess(BuildContext context) async {
+    if (!_member.isMembershipActive) {
+      final restored = await widget.repo.setMemberAccess(
+        userId: _member.userId,
+        clinicId: widget.clinicId,
+        isActive: true,
+      );
+      if (!context.mounted) return;
+      if (restored) {
+        widget.onRefresh();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No se pudo reactivar el acceso.')),
+        );
+      }
+      return;
+    }
+
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -718,6 +950,60 @@ class _StaffCardState extends State<_StaffCard> {
         clinicId: widget.clinicId,
         repo: widget.repo,
       ),
+    );
+  }
+}
+
+class _EditSpecialtyDialog extends StatefulWidget {
+  const _EditSpecialtyDialog({required this.initialValue});
+
+  final String initialValue;
+
+  @override
+  State<_EditSpecialtyDialog> createState() => _EditSpecialtyDialogState();
+}
+
+class _EditSpecialtyDialogState extends State<_EditSpecialtyDialog> {
+  late final TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.initialValue);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final value = _controller.text.trim();
+    if (value.isNotEmpty) Navigator.pop(context, value);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Editar especialidad'),
+      content: TextField(
+        controller: _controller,
+        autofocus: true,
+        textCapitalization: TextCapitalization.words,
+        decoration: const InputDecoration(
+          labelText: 'Especialidad',
+          hintText: 'Ej. Ortodoncia',
+        ),
+        onSubmitted: (_) => _submit(),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton(onPressed: _submit, child: const Text('Guardar')),
+      ],
     );
   }
 }
@@ -813,15 +1099,23 @@ class _ScheduleSheetState extends State<_ScheduleSheet> {
       clinicId: widget.clinicId,
       schedule: _schedule!,
     );
+    if (!mounted) return;
     setState(() => _isSaving = false);
-    if (mounted) {
+    if (ok) {
       Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Horario guardado exitosamente'),
+          backgroundColor: AppColors.success,
+        ),
+      );
+    } else {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            ok ? 'Horario guardado exitosamente' : 'Error al guardar horario',
+            widget.repo.lastError ?? 'No se pudo guardar el horario.',
           ),
-          backgroundColor: ok ? AppColors.success : AppColors.error,
+          backgroundColor: AppColors.error,
         ),
       );
     }
@@ -1125,12 +1419,32 @@ class _DaysOffDialogState extends State<_DaysOffDialog> {
       _reasonCtrl.clear();
       setState(() => _selectedDate = null);
       _loadDaysOff();
+    } else if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            widget.repo.lastError ?? 'No se pudo agregar el dia libre.',
+          ),
+          backgroundColor: AppColors.error,
+        ),
+      );
     }
   }
 
   Future<void> _removeDayOff(String id) async {
-    await widget.repo.removeDayOff(id);
-    _loadDaysOff();
+    final ok = await widget.repo.removeDayOff(id);
+    if (ok) {
+      _loadDaysOff();
+    } else if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            widget.repo.lastError ?? 'No se pudo eliminar el dia libre.',
+          ),
+          backgroundColor: AppColors.error,
+        ),
+      );
+    }
   }
 
   @override

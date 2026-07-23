@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:sistema_dental/core/theme/app_colors.dart';
+import 'package:sistema_dental/features/dentist/presentation/widgets/quick_actions_dialogs.dart';
+import 'package:sistema_dental/features/dentist/presentation/widgets/staff_management_view.dart';
+import 'package:sistema_dental/features/shared/data/appointment_repository.dart';
 import 'package:sistema_dental/features/shared/presentation/user_profile_view.dart';
+import 'package:sistema_dental/features/secretary/presentation/billing_view.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -175,7 +179,7 @@ class _SecretaryDashboardState extends State<SecretaryDashboard> {
           boxShadow: isSelected
               ? [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.05),
+                    color: Colors.black.withValues(alpha: 0.05),
                     blurRadius: 4,
                   ),
                 ]
@@ -260,7 +264,8 @@ class _SecretaryDashboardState extends State<SecretaryDashboard> {
                 context.go('/mode_selector');
               } else if (value == 'logout') {
                 await Supabase.instance.client.auth.signOut();
-                if (context.mounted) context.go('/login');
+                if (!mounted) return;
+                context.go('/login');
               }
             },
             itemBuilder: (context) => [
@@ -307,18 +312,31 @@ class _SecretaryDashboardState extends State<SecretaryDashboard> {
   Widget _buildMainContent() {
     switch (_selectedIndex) {
       case 0:
-        return const SecretaryDashboardView();
+        return SecretaryDashboardView(
+          onOpenBilling: () => setState(() => _selectedIndex = 4),
+        );
       case 1:
         return const PatientsManagementView();
       case 2:
-        return const DentistsManagementView();
+        return const StaffManagementView(
+          dentistsOnly: true,
+          showInviteAction: true,
+          includeInactiveMembers: true,
+        );
+      case 3:
+        return const GlobalAgendaView();
+      case 4:
+        return const BillingView();
       case 5:
         return const UserProfileView(
           roleLabel: 'Secretaria / Recepción',
           avatarIcon: Icons.support_agent,
         );
       default:
-        return const Center(child: Text('Vista en desarrollo...'));
+        return const UserProfileView(
+          roleLabel: 'Secretaria / Recepción',
+          avatarIcon: Icons.support_agent,
+        );
     }
   }
 }
@@ -328,7 +346,9 @@ class _SecretaryDashboardState extends State<SecretaryDashboard> {
 // ----------------------------------------------------
 
 class SecretaryDashboardView extends StatefulWidget {
-  const SecretaryDashboardView({super.key});
+  const SecretaryDashboardView({super.key, required this.onOpenBilling});
+
+  final VoidCallback onOpenBilling;
 
   @override
   State<SecretaryDashboardView> createState() => _SecretaryDashboardViewState();
@@ -341,6 +361,7 @@ class _SecretaryDashboardViewState extends State<SecretaryDashboardView> {
   int _activeDentists = 0;
   double _dailyIncome = 0;
   List<dynamic> _upcomingAppts = [];
+  String? _clinicId;
 
   @override
   void initState() {
@@ -361,7 +382,8 @@ class _SecretaryDashboardViewState extends State<SecretaryDashboardView> {
           .limit(1)
           .single();
 
-      final clinicId = membership['clinic_id'];
+      final clinicId = membership['clinic_id'] as String;
+      _clinicId = clinicId;
 
       // Dentists
       final dentists = await client
@@ -544,7 +566,7 @@ class _SecretaryDashboardViewState extends State<SecretaryDashboardView> {
           ),
           const SizedBox(height: 20),
           ElevatedButton.icon(
-            onPressed: () {},
+            onPressed: _clinicId == null ? null : _openAddPatient,
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.primaryBlue,
               minimumSize: const Size(double.infinity, 50),
@@ -560,7 +582,7 @@ class _SecretaryDashboardViewState extends State<SecretaryDashboardView> {
           ),
           const SizedBox(height: 12),
           ElevatedButton.icon(
-            onPressed: () {},
+            onPressed: _clinicId == null ? null : _openScheduleAppointment,
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.secondaryBlue,
               minimumSize: const Size(double.infinity, 50),
@@ -576,7 +598,7 @@ class _SecretaryDashboardViewState extends State<SecretaryDashboardView> {
           ),
           const SizedBox(height: 12),
           ElevatedButton.icon(
-            onPressed: () {},
+            onPressed: widget.onOpenBilling,
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.lightBlueAccent,
               foregroundColor: AppColors.primaryBlue,
@@ -595,6 +617,33 @@ class _SecretaryDashboardViewState extends State<SecretaryDashboardView> {
         ],
       ),
     );
+  }
+
+  Future<void> _openAddPatient() async {
+    final clinicId = _clinicId;
+    if (clinicId == null) return;
+
+    final created = await showDialog<bool>(
+      context: context,
+      builder: (_) => AddPatientDialog(clinicId: clinicId),
+    );
+    if (created == true) await _refreshStats();
+  }
+
+  Future<void> _openScheduleAppointment() async {
+    final clinicId = _clinicId;
+    if (clinicId == null) return;
+
+    final created = await showDialog<bool>(
+      context: context,
+      builder: (_) => ScheduleAppointmentDialog(clinicId: clinicId),
+    );
+    if (created == true) await _refreshStats();
+  }
+
+  Future<void> _refreshStats() async {
+    if (mounted) setState(() => _isLoading = true);
+    await _fetchStats();
   }
 
   Widget _buildUpcomingAppointments() {
@@ -753,6 +802,309 @@ class _SecretaryDashboardViewState extends State<SecretaryDashboardView> {
   }
 }
 
+class GlobalAgendaView extends StatefulWidget {
+  const GlobalAgendaView({super.key});
+
+  @override
+  State<GlobalAgendaView> createState() => _GlobalAgendaViewState();
+}
+
+class _GlobalAgendaViewState extends State<GlobalAgendaView> {
+  DateTime _selectedDate = DateTime.now();
+  List<dynamic> _appointments = [];
+  String? _clinicId;
+  String? _errorMessage;
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAgenda();
+  }
+
+  Future<void> _loadAgenda() async {
+    if (mounted) {
+      setState(() {
+        _isLoading = true;
+        _errorMessage = null;
+      });
+    }
+
+    try {
+      final client = Supabase.instance.client;
+      final user = client.auth.currentUser;
+      if (user == null) throw StateError('No hay una sesiÃ³n activa.');
+
+      final membership = await client
+          .from('clinic_memberships')
+          .select('clinic_id')
+          .eq('user_id', user.id)
+          .eq('is_active', true)
+          .limit(1)
+          .single();
+      final clinicId = membership['clinic_id'] as String;
+      final range = appointmentLocalDayUtcRange(_selectedDate);
+      final appointments = await client
+          .from('appointments')
+          .select(
+            '*, patients(first_name, last_name), doctors(profiles(name)), services(service_name, duration_mins)',
+          )
+          .eq('clinic_id', clinicId)
+          .gte('date_time', range.startUtc.toIso8601String())
+          .lt('date_time', range.endUtc.toIso8601String())
+          .order('date_time');
+
+      if (!mounted) return;
+      setState(() {
+        _clinicId = clinicId;
+        _appointments = appointments;
+      });
+    } catch (error) {
+      if (mounted) {
+        setState(() => _errorMessage = 'No se pudo cargar la agenda: $error');
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _changeDay(int days) async {
+    setState(() => _selectedDate = _selectedDate.add(Duration(days: days)));
+    await _loadAgenda();
+  }
+
+  Future<void> _pickDate() async {
+    final selected = await showDatePicker(
+      context: context,
+      initialDate: _selectedDate,
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now().add(const Duration(days: 730)),
+    );
+    if (selected == null) return;
+    setState(() => _selectedDate = selected);
+    await _loadAgenda();
+  }
+
+  Future<void> _scheduleAppointment() async {
+    final clinicId = _clinicId;
+    if (clinicId == null) return;
+    final created = await showDialog<bool>(
+      context: context,
+      builder: (_) => ScheduleAppointmentDialog(clinicId: clinicId),
+    );
+    if (created == true) await _loadAgenda();
+  }
+
+  Future<void> _rescheduleAppointment(Map<String, dynamic> appointment) async {
+    final clinicId = _clinicId;
+    if (clinicId == null || appointment['status'] != 'upcoming') return;
+    final changed = await showDialog<bool>(
+      context: context,
+      builder: (_) => ScheduleAppointmentDialog(
+        clinicId: clinicId,
+        appointmentId: appointment['id'] as String,
+        initialPatientId: appointment['patient_id'] as String,
+        initialDoctorId: appointment['doctor_id'] as String,
+        initialServiceId: appointment['service_id'] as String,
+        initialDateTime: DateTime.parse(appointment['date_time']),
+      ),
+    );
+    if (changed == true) await _loadAgenda();
+  }
+
+  String _formatSelectedDate() {
+    const months = [
+      'enero',
+      'febrero',
+      'marzo',
+      'abril',
+      'mayo',
+      'junio',
+      'julio',
+      'agosto',
+      'septiembre',
+      'octubre',
+      'noviembre',
+      'diciembre',
+    ];
+    return '${_selectedDate.day} de ${months[_selectedDate.month - 1]} de ${_selectedDate.year}';
+  }
+
+  String _statusLabel(String status) => switch (status) {
+    'upcoming' => 'Programada',
+    'in_lobby' => 'En espera',
+    'in_treatment' => 'En consulta',
+    'completed' => 'Completada',
+    'cancelled' => 'Cancelada',
+    _ => status,
+  };
+
+  Color _statusColor(String status) => switch (status) {
+    'completed' => Colors.green,
+    'cancelled' => Colors.red,
+    'in_treatment' => Colors.orange,
+    'in_lobby' => Colors.purple,
+    _ => AppColors.primaryBlue,
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final isDesktop = MediaQuery.of(context).size.width > 900;
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _clinicId == null ? null : _scheduleAppointment,
+        icon: const Icon(Icons.add),
+        label: const Text('Nueva cita'),
+      ),
+      body: Padding(
+        padding: EdgeInsets.all(isDesktop ? 32 : 16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Agenda Global',
+              style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Citas de todos los dentistas de la clÃ­nica.',
+              style: TextStyle(color: AppColors.textSecondary),
+            ),
+            const SizedBox(height: 20),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                child: Row(
+                  children: [
+                    IconButton(
+                      tooltip: 'DÃ­a anterior',
+                      onPressed: () => _changeDay(-1),
+                      icon: const Icon(Icons.chevron_left),
+                    ),
+                    Expanded(
+                      child: InkWell(
+                        onTap: _pickDate,
+                        borderRadius: BorderRadius.circular(8),
+                        child: Padding(
+                          padding: const EdgeInsets.all(10),
+                          child: Text(
+                            _formatSelectedDate(),
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'DÃ­a siguiente',
+                      onPressed: () => _changeDay(1),
+                      icon: const Icon(Icons.chevron_right),
+                    ),
+                    IconButton(
+                      tooltip: 'Actualizar agenda',
+                      onPressed: _loadAgenda,
+                      icon: const Icon(Icons.refresh),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Expanded(child: _buildAgendaContent()),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAgendaContent() {
+    if (_isLoading) return const Center(child: CircularProgressIndicator());
+    if (_errorMessage != null) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.error_outline, size: 42, color: Colors.red),
+            const SizedBox(height: 12),
+            Text(_errorMessage!, textAlign: TextAlign.center),
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: _loadAgenda,
+              icon: const Icon(Icons.refresh),
+              label: const Text('Reintentar'),
+            ),
+          ],
+        ),
+      );
+    }
+    if (_appointments.isEmpty) {
+      return const Center(child: Text('No hay citas programadas este dÃ­a.'));
+    }
+
+    return ListView.separated(
+      itemCount: _appointments.length,
+      separatorBuilder: (_, _) => const SizedBox(height: 10),
+      itemBuilder: (context, index) {
+        final appointment = _appointments[index];
+        final date = DateTime.parse(appointment['date_time']).toLocal();
+        final patient = appointment['patients'];
+        final doctor = appointment['doctors'];
+        final service = appointment['services'];
+        final status = appointment['status']?.toString() ?? 'upcoming';
+        final patientName =
+            '${patient?['first_name'] ?? 'Paciente'} ${patient?['last_name'] ?? ''}'
+                .trim();
+        final doctorName = doctor?['profiles']?['name'] ?? 'Sin asignar';
+        final serviceName = service?['service_name'] ?? 'Consulta';
+        final time =
+            '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+
+        return Card(
+          margin: EdgeInsets.zero,
+          child: ListTile(
+            onTap: status == 'upcoming'
+                ? () => _rescheduleAppointment(appointment)
+                : null,
+            leading: SizedBox(
+              width: 58,
+              child: Text(
+                time,
+                style: const TextStyle(
+                  color: AppColors.primaryBlue,
+                  fontSize: 17,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+            title: Text(
+              patientName,
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+            subtitle: Text('Dr. $doctorName  â€¢  $serviceName'),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Chip(
+                  label: Text(_statusLabel(status)),
+                  side: BorderSide(color: _statusColor(status)),
+                  labelStyle: TextStyle(color: _statusColor(status)),
+                  backgroundColor: _statusColor(status).withValues(alpha: 0.08),
+                ),
+                if (status == 'upcoming')
+                  const Padding(
+                    padding: EdgeInsets.only(left: 6),
+                    child: Icon(Icons.edit_calendar_outlined, size: 18),
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
 class PatientsManagementView extends StatefulWidget {
   const PatientsManagementView({super.key});
 
@@ -763,6 +1115,8 @@ class PatientsManagementView extends StatefulWidget {
 class _PatientsManagementViewState extends State<PatientsManagementView> {
   bool _isLoading = true;
   List<dynamic> _patients = [];
+  String? _clinicId;
+  String _searchQuery = '';
 
   @override
   void initState() {
@@ -770,10 +1124,15 @@ class _PatientsManagementViewState extends State<PatientsManagementView> {
     _fetchPatients();
   }
 
-  Future<void> _fetchPatients() async {
+  Future<void> _fetchPatients({bool showLoader = false}) async {
     final client = Supabase.instance.client;
     final user = client.auth.currentUser;
-    if (user == null) return;
+    if (user == null) {
+      if (mounted) setState(() => _isLoading = false);
+      return;
+    }
+
+    if (showLoader && mounted) setState(() => _isLoading = true);
 
     try {
       final membership = await client
@@ -783,14 +1142,17 @@ class _PatientsManagementViewState extends State<PatientsManagementView> {
           .limit(1)
           .single();
 
-      final clinicId = membership['clinic_id'];
+      final clinicId = membership['clinic_id'] as String;
 
       final patientsRes = await client
           .from('patients')
           .select('*, profiles(phone)')
-          .eq('clinic_id', clinicId);
+          .eq('clinic_id', clinicId)
+          .order('last_name');
 
+      if (!mounted) return;
       setState(() {
+        _clinicId = clinicId;
         _patients = patientsRes;
       });
     } catch (e) {
@@ -805,6 +1167,18 @@ class _PatientsManagementViewState extends State<PatientsManagementView> {
     if (_isLoading) return const Center(child: CircularProgressIndicator());
 
     final isDesktop = MediaQuery.of(context).size.width > 900;
+    final normalizedQuery = _searchQuery.trim().toLowerCase();
+    final visiblePatients = _patients.where((patient) {
+      if (normalizedQuery.isEmpty) return true;
+      final profile = patient['profiles'];
+      final searchable = [
+        patient['first_name'],
+        patient['last_name'],
+        patient['relationship'],
+        profile is Map ? profile['phone'] : null,
+      ].whereType<Object>().join(' ').toLowerCase();
+      return searchable.contains(normalizedQuery);
+    }).toList();
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -836,7 +1210,7 @@ class _PatientsManagementViewState extends State<PatientsManagementView> {
                   ],
                 ),
                 ElevatedButton.icon(
-                  onPressed: () {},
+                  onPressed: _clinicId == null ? null : _addPatient,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.primaryBlue,
                     padding: const EdgeInsets.symmetric(
@@ -856,6 +1230,25 @@ class _PatientsManagementViewState extends State<PatientsManagementView> {
               ],
             ),
             const SizedBox(height: 24),
+            TextField(
+              onChanged: (value) => setState(() => _searchQuery = value),
+              decoration: InputDecoration(
+                hintText: 'Buscar paciente',
+                prefixIcon: const Icon(Icons.search),
+                suffixIcon: IconButton(
+                  tooltip: 'Actualizar pacientes',
+                  onPressed: () => _fetchPatients(showLoader: true),
+                  icon: const Icon(Icons.refresh),
+                ),
+                filled: true,
+                fillColor: Colors.white,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
             Container(
               width: double.infinity,
               padding: EdgeInsets.all(isDesktop ? 24 : 16),
@@ -925,7 +1318,7 @@ class _PatientsManagementViewState extends State<PatientsManagementView> {
                         ],
                       ),
                       const Divider(height: 32),
-                      if (_patients.isEmpty)
+                      if (visiblePatients.isEmpty)
                         const Padding(
                           padding: EdgeInsets.all(16.0),
                           child: Text(
@@ -934,18 +1327,9 @@ class _PatientsManagementViewState extends State<PatientsManagementView> {
                           ),
                         )
                       else
-                        ..._patients.map((p) {
-                          final id = p['id'].toString().substring(0, 8);
-                          final name = '${p['first_name']} ${p['last_name']}';
-                          final phone =
-                              p['profiles']?['phone'] ?? 'No registrado';
-                          final relation = p['relationship'] ?? 'self';
-
+                        ...visiblePatients.map((p) {
                           return Column(
-                            children: [
-                              _buildPatientRow(id, name, phone, relation),
-                              const Divider(),
-                            ],
+                            children: [_buildPatientRow(p), const Divider()],
                           );
                         }),
                     ],
@@ -959,12 +1343,48 @@ class _PatientsManagementViewState extends State<PatientsManagementView> {
     );
   }
 
-  Widget _buildPatientRow(
-    String id,
-    String name,
-    String phone,
-    String lastVisit,
-  ) {
+  Future<void> _addPatient() async {
+    final clinicId = _clinicId;
+    if (clinicId == null) return;
+    final created = await showDialog<bool>(
+      context: context,
+      builder: (_) => AddPatientDialog(clinicId: clinicId),
+    );
+    if (created == true) await _fetchPatients(showLoader: true);
+  }
+
+  Future<void> _editPatient(Map<String, dynamic> patient) async {
+    final clinicId = _clinicId;
+    if (clinicId == null) return;
+    final updated = await showDialog<bool>(
+      context: context,
+      builder: (_) => EditPatientDialog(clinicId: clinicId, patient: patient),
+    );
+    if (updated == true) await _fetchPatients(showLoader: true);
+  }
+
+  Future<void> _schedulePatient(Map<String, dynamic> patient) async {
+    final clinicId = _clinicId;
+    if (clinicId == null) return;
+    await showDialog<bool>(
+      context: context,
+      builder: (_) => ScheduleAppointmentDialog(
+        clinicId: clinicId,
+        initialPatientId: patient['id'] as String,
+      ),
+    );
+  }
+
+  Widget _buildPatientRow(Map<String, dynamic> patient) {
+    final rawId = patient['id'].toString();
+    final id = rawId.length > 8 ? rawId.substring(0, 8) : rawId;
+    final name = '${patient['first_name'] ?? ''} ${patient['last_name'] ?? ''}'
+        .trim();
+    final profile = patient['profiles'];
+    final phone = profile is Map
+        ? (profile['phone']?.toString() ?? 'No registrado')
+        : 'No registrado';
+    final relationship = patient['relationship']?.toString() ?? 'self';
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8.0),
       child: Row(
@@ -1010,18 +1430,30 @@ class _PatientsManagementViewState extends State<PatientsManagementView> {
           ),
           SizedBox(
             width: 150,
-            child: Text(lastVisit, style: const TextStyle(color: Colors.grey)),
+            child: Text(
+              relationship,
+              style: const TextStyle(color: Colors.grey),
+            ),
           ),
           SizedBox(
             width: 100,
             child: Row(
-              children: const [
-                Icon(Icons.edit, color: Colors.grey, size: 20),
-                SizedBox(width: 16),
-                Icon(
-                  Icons.calendar_month,
-                  color: AppColors.primaryBlue,
-                  size: 20,
+              children: [
+                IconButton(
+                  tooltip: 'Editar paciente',
+                  visualDensity: VisualDensity.compact,
+                  onPressed: () => _editPatient(patient),
+                  icon: const Icon(Icons.edit, color: Colors.grey, size: 20),
+                ),
+                IconButton(
+                  tooltip: 'Agendar cita',
+                  visualDensity: VisualDensity.compact,
+                  onPressed: () => _schedulePatient(patient),
+                  icon: const Icon(
+                    Icons.calendar_month,
+                    color: AppColors.primaryBlue,
+                    size: 20,
+                  ),
                 ),
               ],
             ),
@@ -1032,219 +1464,165 @@ class _PatientsManagementViewState extends State<PatientsManagementView> {
   }
 }
 
-class DentistsManagementView extends StatefulWidget {
-  const DentistsManagementView({super.key});
+class EditPatientDialog extends StatefulWidget {
+  const EditPatientDialog({
+    super.key,
+    required this.clinicId,
+    required this.patient,
+  });
+
+  final String clinicId;
+  final Map<String, dynamic> patient;
 
   @override
-  State<DentistsManagementView> createState() => _DentistsManagementViewState();
+  State<EditPatientDialog> createState() => _EditPatientDialogState();
 }
 
-class _DentistsManagementViewState extends State<DentistsManagementView> {
-  bool _isLoading = true;
-  List<dynamic> _dentists = [];
+class _EditPatientDialogState extends State<EditPatientDialog> {
+  final _formKey = GlobalKey<FormState>();
+  late final TextEditingController _firstNameController;
+  late final TextEditingController _lastNameController;
+  late String _relationship;
+  DateTime? _dateOfBirth;
+  bool _isSaving = false;
 
   @override
   void initState() {
     super.initState();
-    _fetchDentists();
+    _firstNameController = TextEditingController(
+      text: widget.patient['first_name']?.toString() ?? '',
+    );
+    _lastNameController = TextEditingController(
+      text: widget.patient['last_name']?.toString() ?? '',
+    );
+    _relationship = widget.patient['relationship']?.toString() ?? 'self';
+    _dateOfBirth = DateTime.tryParse(
+      widget.patient['date_of_birth']?.toString() ?? '',
+    );
   }
 
-  Future<void> _fetchDentists() async {
-    final client = Supabase.instance.client;
-    final user = client.auth.currentUser;
-    if (user == null) return;
+  @override
+  void dispose() {
+    _firstNameController.dispose();
+    _lastNameController.dispose();
+    super.dispose();
+  }
 
+  Future<void> _save() async {
+    if (!_formKey.currentState!.validate()) return;
+    setState(() => _isSaving = true);
     try {
-      final membership = await client
-          .from('clinic_memberships')
-          .select('clinic_id')
-          .eq('user_id', user.id)
-          .limit(1)
-          .single();
-
-      final clinicId = membership['clinic_id'];
-
-      final dentistsRes = await client
-          .from('clinic_memberships')
-          .select('*, profiles(name)')
-          .eq('clinic_id', clinicId)
-          .inFilter('role_in_clinic', ['owner', 'dentist']);
-
-      setState(() {
-        _dentists = dentistsRes;
-      });
-    } catch (e) {
-      debugPrint('Error fetch dentists: $e');
+      await Supabase.instance.client
+          .from('patients')
+          .update({
+            'first_name': _firstNameController.text.trim(),
+            'last_name': _lastNameController.text.trim(),
+            'relationship': _relationship,
+            'date_of_birth': _dateOfBirth?.toIso8601String().split('T').first,
+          })
+          .eq('id', widget.patient['id'])
+          .eq('clinic_id', widget.clinicId);
+      if (mounted) Navigator.pop(context, true);
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('No se pudo actualizar: $error')),
+        );
+      }
     } finally {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) setState(() => _isSaving = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) return const Center(child: CircularProgressIndicator());
-
-    final isDesktop = MediaQuery.of(context).size.width > 900;
-
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      body: SingleChildScrollView(
-        padding: EdgeInsets.all(isDesktop ? 32 : 16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Wrap(
-              alignment: WrapAlignment.spaceBetween,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              spacing: 16,
-              runSpacing: 16,
+    return AlertDialog(
+      title: const Text('Editar paciente'),
+      content: SizedBox(
+        width: 480,
+        child: Form(
+          key: _formKey,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: const [
-                    Text(
-                      'Gestión de Dentistas',
-                      style: TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    Text(
-                      'Administración del personal médico',
-                      style: TextStyle(color: Colors.grey),
-                    ),
-                  ],
+                TextFormField(
+                  controller: _firstNameController,
+                  decoration: const InputDecoration(labelText: 'Nombre'),
+                  validator: (value) => value == null || value.trim().isEmpty
+                      ? 'Requerido'
+                      : null,
                 ),
-                ElevatedButton.icon(
-                  onPressed: () {},
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primaryBlue,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 24,
-                      vertical: 16,
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _lastNameController,
+                  decoration: const InputDecoration(labelText: 'Apellido'),
+                  validator: (value) => value == null || value.trim().isEmpty
+                      ? 'Requerido'
+                      : null,
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  initialValue: _relationship,
+                  decoration: const InputDecoration(labelText: 'RelaciÃ³n'),
+                  items: const [
+                    DropdownMenuItem(value: 'self', child: Text('Titular')),
+                    DropdownMenuItem(value: 'child', child: Text('Hijo/a')),
+                    DropdownMenuItem(value: 'spouse', child: Text('CÃ³nyuge')),
+                    DropdownMenuItem(
+                      value: 'parent',
+                      child: Text('Padre/Madre'),
                     ),
+                    DropdownMenuItem(value: 'other', child: Text('Otro')),
+                  ],
+                  onChanged: (value) {
+                    if (value != null) setState(() => _relationship = value);
+                  },
+                ),
+                const SizedBox(height: 12),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(
+                    _dateOfBirth == null
+                        ? 'Fecha de nacimiento'
+                        : '${_dateOfBirth!.day.toString().padLeft(2, '0')}/'
+                              '${_dateOfBirth!.month.toString().padLeft(2, '0')}/'
+                              '${_dateOfBirth!.year}',
                   ),
-                  icon: const Icon(Icons.medical_services, color: Colors.white),
-                  label: const Text(
-                    'Registrar',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
+                  trailing: const Icon(Icons.cake_outlined),
+                  onTap: () async {
+                    final selected = await showDatePicker(
+                      context: context,
+                      initialDate: _dateOfBirth ?? DateTime(2000),
+                      firstDate: DateTime(1900),
+                      lastDate: DateTime.now(),
+                    );
+                    if (selected != null) {
+                      setState(() => _dateOfBirth = selected);
+                    }
+                  },
                 ),
               ],
             ),
-            const SizedBox(height: 24),
-            if (_dentists.isEmpty)
-              const Text(
-                'No hay dentistas registrados.',
-                style: TextStyle(color: Colors.grey),
-              )
-            else
-              LayoutBuilder(
-                builder: (context, constraints) {
-                  int columns = constraints.maxWidth > 1100
-                      ? 3
-                      : (constraints.maxWidth > 700 ? 2 : 1);
-                  double width =
-                      (constraints.maxWidth - (columns - 1) * 24) / columns;
-                  return Wrap(
-                    spacing: 24,
-                    runSpacing: 24,
-                    children: _dentists.map((doc) {
-                      final name = doc['profiles']?['name'] ?? 'Doctor';
-                      final specialty = doc['role_in_clinic'] == 'owner'
-                          ? 'Director/General'
-                          : 'General';
-                      final isOnline = doc['is_active'] == true;
-                      return SizedBox(
-                        width: width,
-                        child: _buildDentistCard(
-                          name,
-                          specialty,
-                          'Consultorio',
-                          isOnline,
-                        ),
-                      );
-                    }).toList(),
-                  );
-                },
-              ),
-          ],
+          ),
         ),
       ),
-    );
-  }
-
-  Widget _buildDentistCard(
-    String name,
-    String specialty,
-    String room,
-    bool isOnline,
-  ) {
-    return Container(
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.grey.shade200),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Stack(
-            alignment: Alignment.bottomRight,
-            children: [
-              const CircleAvatar(
-                radius: 30,
-                backgroundColor: AppColors.lightBlueAccent,
-                child: Icon(
-                  Icons.person,
-                  size: 30,
-                  color: AppColors.primaryBlue,
-                ),
-              ),
-              Container(
-                width: 14,
-                height: 14,
-                decoration: BoxDecoration(
-                  color: isOnline ? AppColors.success : Colors.grey,
-                  shape: BoxShape.circle,
-                  border: Border.all(color: Colors.white, width: 2),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Text(
-            name,
-            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-            textAlign: TextAlign.center,
-            overflow: TextOverflow.ellipsis,
-          ),
-          const SizedBox(height: 4),
-          Text(
-            specialty,
-            style: const TextStyle(color: AppColors.primaryBlue, fontSize: 12),
-            overflow: TextOverflow.ellipsis,
-          ),
-          const SizedBox(height: 8),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-            decoration: BoxDecoration(
-              color: AppColors.background,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Text(
-              room,
-              style: const TextStyle(fontSize: 12),
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-        ],
-      ),
+      actions: [
+        TextButton(
+          onPressed: _isSaving ? null : () => Navigator.pop(context),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton(
+          onPressed: _isSaving ? null : _save,
+          child: _isSaving
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Text('Guardar'),
+        ),
+      ],
     );
   }
 }

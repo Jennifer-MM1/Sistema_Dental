@@ -19,8 +19,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     redirect: (context, state) async {
       final supabase = Supabase.instance.client;
       final user = supabase.auth.currentUser;
-      
-      final isOnLoginPage = state.uri.path == '/login' || state.uri.path == '/register';
+
+      final isOnLoginPage =
+          state.uri.path == '/login' || state.uri.path == '/register';
 
       // Si no hay usuario autenticado y NO está en login/registro → redirigir a login
       if (user == null) {
@@ -34,14 +35,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
 
       // Las rutas internas manejan su propia autorización ahora a través de los datos de membresía de clínica
       return null;
-
     },
     routes: [
-      
-      GoRoute(
-        path: '/login',
-        builder: (context, state) => const LoginScreen(),
-      ),
+      GoRoute(path: '/login', builder: (context, state) => const LoginScreen()),
       GoRoute(
         path: '/register',
         builder: (context, state) => const RegisterScreen(),
@@ -57,7 +53,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           return LinkClinicScreen(role: role);
         },
       ),
-GoRoute(
+      GoRoute(
         path: '/client',
         builder: (context, state) => const ClientDashboard(),
       ),
@@ -70,7 +66,6 @@ GoRoute(
         path: '/secretary',
         builder: (context, state) => const SecretaryDashboard(),
       ),
-
     ],
     errorBuilder: (context, state) => Scaffold(
       body: Center(
@@ -94,4 +89,3 @@ GoRoute(
     ),
   );
 });
-

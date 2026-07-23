@@ -14,8 +14,35 @@ final staffRepositoryProvider = Provider<StaffRepository>((ref) {
 /// doctor_schedules y doctor_days_off.
 class StaffRepository {
   final SupabaseClient _client;
+  String? lastError;
 
   StaffRepository(this._client);
+
+  void _clearError() => lastError = null;
+
+  void _captureError(String operation, Object error) {
+    debugPrint('$operation: $error');
+    if (error is PostgrestException) {
+      switch (error.code) {
+        case '42501':
+          lastError = 'Tu usuario no tiene permiso para realizar este cambio.';
+          return;
+        case 'PGRST205':
+        case '42P01':
+          lastError = 'Falta instalar una tabla requerida en Supabase.';
+          return;
+        case '42703':
+          lastError = 'La base de datos no tiene una columna requerida.';
+          return;
+        case '23505':
+          lastError = 'Ese registro ya existe.';
+          return;
+      }
+      lastError = error.message;
+      return;
+    }
+    lastError = 'Ocurrio un error inesperado. Intenta nuevamente.';
+  }
 
   // ─────────────────────────────────────────────────────────────
   //  PERSONAL DE LA CLÍNICA
@@ -23,14 +50,20 @@ class StaffRepository {
 
   /// Devuelve todo el personal activo de la clínica (dentistas + secretarias).
   /// Incluye datos del perfil y del registro en la tabla doctors si existe.
-  Future<List<StaffMember>> getStaffInClinic(String clinicId) async {
+  Future<List<StaffMember>> getStaffInClinic(
+    String clinicId, {
+    bool includeInactive = false,
+  }) async {
+    _clearError();
     try {
-      final memberships = await _client
+      final membershipsQuery = _client
           .from('clinic_memberships')
-          .select('user_id, clinic_id, role_in_clinic')
+          .select('user_id, clinic_id, role_in_clinic, is_active')
           .eq('clinic_id', clinicId)
-          .inFilter('role_in_clinic', ['owner', 'dentist', 'secretary'])
-          .eq('is_active', true);
+          .inFilter('role_in_clinic', ['owner', 'dentist', 'secretary']);
+      final memberships = includeInactive
+          ? await membershipsQuery
+          : await membershipsQuery.eq('is_active', true);
 
       final userIds = memberships
           .map<String>((m) => m['user_id'] as String)
@@ -83,7 +116,26 @@ class StaffRepository {
           .update({'cabin_assigned': cabin})
           .eq('id', doctorRecordId);
       return true;
-    } catch (_) {
+    } catch (e) {
+      _captureError('Error updating doctor cabin', e);
+      return false;
+    }
+  }
+
+  /// Actualiza la especialidad mostrada en la ficha del doctor.
+  Future<bool> updateDoctorSpecialty({
+    required String doctorRecordId,
+    required String specialty,
+  }) async {
+    _clearError();
+    try {
+      await _client
+          .from('doctors')
+          .update({'specialty': specialty.trim()})
+          .eq('id', doctorRecordId);
+      return true;
+    } catch (e) {
+      _captureError('Error updating doctor specialty', e);
       return false;
     }
   }
@@ -95,6 +147,7 @@ class StaffRepository {
     String specialty = 'General',
     String cabin = 'Consultorio 1',
   }) async {
+    _clearError();
     try {
       final existing = await _client
           .from('doctors')
@@ -129,13 +182,15 @@ class StaffRepository {
     required String doctorRecordId,
     required bool isAvailable,
   }) async {
+    _clearError();
     try {
       await _client
           .from('doctors')
           .update({'is_available': isAvailable})
           .eq('id', doctorRecordId);
       return true;
-    } catch (_) {
+    } catch (e) {
+      _captureError('Error updating doctor availability', e);
       return false;
     }
   }
@@ -150,6 +205,7 @@ class StaffRepository {
     required String doctorUserId,
     required String clinicId,
   }) async {
+    _clearError();
     try {
       final rows = await _client
           .from('doctor_schedules')
@@ -168,7 +224,8 @@ class StaffRepository {
         // Días por defecto: lunes a viernes activos, fines de semana libres
         return DoctorDaySchedule(dayOfWeek: i, isWorkingDay: i >= 1 && i <= 5);
       });
-    } catch (_) {
+    } catch (e) {
+      _captureError('Error loading doctor schedule', e);
       return List.generate(
         7,
         (i) => DoctorDaySchedule(dayOfWeek: i, isWorkingDay: i >= 1 && i <= 5),
@@ -182,6 +239,7 @@ class StaffRepository {
     required String clinicId,
     required List<DoctorDaySchedule> schedule,
   }) async {
+    _clearError();
     try {
       final rows = schedule
           .map((s) => s.toMap(doctorUserId, clinicId))
@@ -191,7 +249,8 @@ class StaffRepository {
           .from('doctor_schedules')
           .upsert(rows, onConflict: 'doctor_user_id,clinic_id,day_of_week');
       return true;
-    } catch (_) {
+    } catch (e) {
+      _captureError('Error saving doctor schedule', e);
       return false;
     }
   }
@@ -205,6 +264,7 @@ class StaffRepository {
     required String doctorUserId,
     required String clinicId,
   }) async {
+    _clearError();
     try {
       final today = DateTime.now().toIso8601String().substring(0, 10);
       final rows = await _client
@@ -216,7 +276,8 @@ class StaffRepository {
           .order('date');
 
       return rows.map((r) => DoctorDayOff.fromMap(r)).toList();
-    } catch (_) {
+    } catch (e) {
+      _captureError('Error loading doctor days off', e);
       return [];
     }
   }
@@ -228,6 +289,7 @@ class StaffRepository {
     required DateTime date,
     String? reason,
   }) async {
+    _clearError();
     try {
       await _client.from('doctor_days_off').insert({
         'doctor_user_id': doctorUserId,
@@ -236,17 +298,20 @@ class StaffRepository {
         'reason': reason,
       });
       return true;
-    } catch (_) {
+    } catch (e) {
+      _captureError('Error adding doctor day off', e);
       return false;
     }
   }
 
   /// Elimina un día libre por su ID.
   Future<bool> removeDayOff(String dayOffId) async {
+    _clearError();
     try {
       await _client.from('doctor_days_off').delete().eq('id', dayOffId);
       return true;
-    } catch (_) {
+    } catch (e) {
+      _captureError('Error removing doctor day off', e);
       return false;
     }
   }
@@ -256,6 +321,7 @@ class StaffRepository {
     required String userId,
     required String clinicId,
   }) async {
+    _clearError();
     try {
       await _client
           .from('clinic_memberships')
@@ -263,7 +329,27 @@ class StaffRepository {
           .eq('user_id', userId)
           .eq('clinic_id', clinicId);
       return true;
-    } catch (_) {
+    } catch (e) {
+      _captureError('Error removing member access', e);
+      return false;
+    }
+  }
+
+  Future<bool> setMemberAccess({
+    required String userId,
+    required String clinicId,
+    required bool isActive,
+  }) async {
+    _clearError();
+    try {
+      await _client
+          .from('clinic_memberships')
+          .update({'is_active': isActive})
+          .eq('user_id', userId)
+          .eq('clinic_id', clinicId);
+      return true;
+    } catch (e) {
+      _captureError('Error updating member access', e);
       return false;
     }
   }

@@ -8,6 +8,7 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.plugin.common.MethodChannel
 import org.json.JSONObject
+import org.json.JSONArray
 import java.time.Instant
 
 class MainActivity : FlutterActivity() {
@@ -25,6 +26,9 @@ class MainActivity : FlutterActivity() {
                 "unlinkWearSession" -> unlinkWearSession(result)
                 "consumePendingWearSession" -> consumePendingWearSession(result)
                 "consumePendingWearUnlink" -> consumePendingWearUnlink(result)
+                "consumePendingWearActions" -> consumePendingWearActions(result)
+                "sendWearAction" -> sendWearAction(call.arguments, result)
+                "isWearSessionLinked" -> isWearSessionLinked(result)
                 else -> result.notImplemented()
             }
         }
@@ -61,6 +65,11 @@ class MainActivity : FlutterActivity() {
                     result.success(mapOf("success" to false, "device_count" to 0))
                     return@addOnSuccessListener
                 }
+
+                getSharedPreferences(WearLinkMessageService.prefsName, Context.MODE_PRIVATE)
+                    .edit()
+                    .putBoolean(WearLinkMessageService.phoneLinkedKey, true)
+                    .apply()
 
                 var sent = 0
                 var completed = 0
@@ -104,6 +113,10 @@ class MainActivity : FlutterActivity() {
         json.put("sent_at", Instant.now().toString())
         val bytes = json.toString().toByteArray(Charsets.UTF_8)
         putWearDataItem(WearLinkMessageService.logoutDataPath, json.toString())
+        getSharedPreferences(WearLinkMessageService.prefsName, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(WearLinkMessageService.phoneLinkedKey, false)
+            .apply()
 
         Wearable.getNodeClient(this).connectedNodes
             .addOnSuccessListener { nodes ->
@@ -143,6 +156,78 @@ class MainActivity : FlutterActivity() {
             .addOnFailureListener { error ->
                 result.error("wear_unlink_error", error.localizedMessage, null)
             }
+    }
+
+    private fun isWearSessionLinked(result: MethodChannel.Result) {
+        val linked = getSharedPreferences(
+            WearLinkMessageService.prefsName,
+            Context.MODE_PRIVATE
+        ).getBoolean(WearLinkMessageService.phoneLinkedKey, false)
+        result.success(linked)
+    }
+
+    private fun sendWearAction(arguments: Any?, result: MethodChannel.Result) {
+        val payload = arguments as? Map<*, *>
+        val appointmentId = payload?.get("appointment_id") as? String
+        val action = payload?.get("action") as? String
+        if (appointmentId.isNullOrBlank() || action.isNullOrBlank()) {
+            result.error("invalid_action", "La accion del reloj no es valida.", null)
+            return
+        }
+
+        val envelope = JSONObject().apply {
+            put("appointment_id", appointmentId)
+            put("action", action)
+            put("sent_at", Instant.now().toString())
+        }
+        val bytes = envelope.toString().toByteArray(Charsets.UTF_8)
+
+        Wearable.getNodeClient(this).connectedNodes
+            .addOnSuccessListener { nodes ->
+                if (nodes.isEmpty()) {
+                    result.success(false)
+                    return@addOnSuccessListener
+                }
+                var delivered = false
+                var completed = 0
+                nodes.forEach { node ->
+                    Wearable.getMessageClient(this)
+                        .sendMessage(node.id, WearLinkMessageService.actionPath, bytes)
+                        .addOnSuccessListener {
+                            delivered = true
+                            completed += 1
+                            if (completed == nodes.size) result.success(delivered)
+                        }
+                        .addOnFailureListener {
+                            completed += 1
+                            if (completed == nodes.size) result.success(delivered)
+                        }
+                }
+            }
+            .addOnFailureListener { result.success(false) }
+    }
+
+    private fun consumePendingWearActions(result: MethodChannel.Result) {
+        val prefs = getSharedPreferences(WearLinkMessageService.prefsName, Context.MODE_PRIVATE)
+        val raw = prefs.getString(WearLinkMessageService.actionsKey, "[]") ?: "[]"
+        val actions = mutableListOf<Map<String, String>>()
+        try {
+            val json = JSONArray(raw)
+            for (index in 0 until json.length()) {
+                val item = json.optJSONObject(index) ?: continue
+                actions.add(
+                    mapOf(
+                        "appointment_id" to item.optString("appointment_id", ""),
+                        "action" to item.optString("action", ""),
+                        "sent_at" to item.optString("sent_at", "")
+                    )
+                )
+            }
+        } catch (_: Exception) {
+            // Una cola danada se descarta para no bloquear nuevas acciones.
+        }
+        prefs.edit().remove(WearLinkMessageService.actionsKey).apply()
+        result.success(actions)
     }
 
     private fun consumePendingWearSession(result: MethodChannel.Result) {

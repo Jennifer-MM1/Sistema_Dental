@@ -1,3 +1,5 @@
+// ignore_for_file: avoid_print
+
 import 'package:supabase/supabase.dart';
 import 'dart:io';
 
@@ -12,10 +14,7 @@ Future<void> main() async {
     final res = await supabase.auth.signUp(
       email: 'test_register_user_99@test.com',
       password: 'password123',
-      data: {
-        'name': 'Test User 99',
-        'role': 'client',
-      },
+      data: {'name': 'Test User 99', 'role': 'client'},
     );
     print('Exito! User: ${res.user?.id}');
   } on AuthException catch (e) {

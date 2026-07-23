@@ -23,109 +23,290 @@ class ClientDashboard extends ConsumerStatefulWidget {
 
 class _ClientDashboardState extends ConsumerState<ClientDashboard> {
   int _selectedIndex = 0;
+  String _userName = 'Cliente';
+  String _clinicName = 'Clínica';
+
+  static const _sections = [
+    (Icons.grid_view, 'Inicio'),
+    (Icons.calendar_month_outlined, 'Mis citas'),
+    (Icons.medical_information_outlined, 'Historial clínico'),
+    (Icons.settings_outlined, 'Configuración'),
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSidebarProfile();
+  }
+
+  Future<void> _loadSidebarProfile() async {
+    final client = Supabase.instance.client;
+    final user = client.auth.currentUser;
+    if (user == null) return;
+
+    try {
+      final profile = await client
+          .from('profiles')
+          .select('name')
+          .eq('id', user.id)
+          .maybeSingle();
+      final membership = await client
+          .from('clinic_memberships')
+          .select('clinics(business_name)')
+          .eq('user_id', user.id)
+          .eq('role_in_clinic', 'client')
+          .eq('is_active', true)
+          .limit(1)
+          .maybeSingle();
+      if (!mounted) return;
+      setState(() {
+        _userName = profile?['name'] as String? ?? user.email ?? 'Cliente';
+        _clinicName =
+            membership?['clinics']?['business_name'] as String? ?? 'Clínica';
+      });
+    } catch (error) {
+      debugPrint('Error al cargar el perfil del cliente: $error');
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    final isDesktop = MediaQuery.of(context).size.width > 900;
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: AppBar(
-        backgroundColor: AppColors.background,
-        elevation: 0,
-        leading: _selectedIndex == 3
-            ? const Icon(
-                Icons.medical_services_outlined,
-                color: AppColors.primaryBlue,
-              )
-            : IconButton(
-                icon: const Icon(Icons.menu, color: AppColors.textPrimary),
-                onPressed: () {},
-              ),
-        title: Text(
-          _selectedIndex == 3 ? 'DentalSync Connect' : 'DentalSync',
-          style: const TextStyle(
-            color: AppColors.primaryBlue,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        actions: [
-          if (_selectedIndex == 3)
-            IconButton(
-              icon: const Icon(
-                Icons.help_outline,
-                color: AppColors.textPrimary,
-              ),
-              onPressed: () {},
-            )
-          else
-            Padding(
-              padding: const EdgeInsets.only(right: 8.0),
-              child: PopupMenuButton<String>(
-                icon: const CircleAvatar(
-                  backgroundColor: AppColors.secondaryBlue,
-                  child: Icon(Icons.person, color: Colors.white),
+      appBar: isDesktop
+          ? null
+          : AppBar(
+              backgroundColor: Colors.white,
+              iconTheme: const IconThemeData(color: AppColors.primaryBlue),
+              title: const Text(
+                'DentalSync',
+                style: TextStyle(
+                  color: AppColors.primaryBlue,
+                  fontWeight: FontWeight.bold,
                 ),
-                onSelected: (value) async {
-                  if (value == 'mode') {
-                    context.go('/mode_selector');
-                  } else if (value == 'logout') {
-                    await ref.read(loginProvider.notifier).logout();
-                    if (context.mounted) context.go('/login');
-                  }
-                },
-                itemBuilder: (context) => [
-                  const PopupMenuItem(
-                    value: 'mode',
-                    child: Row(
-                      children: [
-                        Icon(Icons.swap_horiz, color: AppColors.textPrimary),
-                        SizedBox(width: 8),
-                        Text('Cambiar Modo'),
-                      ],
-                    ),
-                  ),
-                  const PopupMenuItem(
-                    value: 'logout',
-                    child: Row(
-                      children: [
-                        Icon(Icons.logout, color: AppColors.error),
-                        SizedBox(width: 8),
-                        Text(
-                          'Cerrar Sesión',
-                          style: TextStyle(color: AppColors.error),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
               ),
             ),
+      drawer: isDesktop ? null : Drawer(child: _buildSidebar()),
+      body: Row(
+        children: [
+          if (isDesktop) _buildSidebar(),
+          Expanded(
+            child: Column(
+              children: [
+                if (isDesktop) _buildTopBar(),
+                Expanded(child: _buildBody()),
+              ],
+            ),
+          ),
         ],
       ),
-      body: _buildBody(),
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _selectedIndex,
-        onTap: (index) {
-          setState(() {
-            _selectedIndex = index;
-          });
-        },
-        selectedItemColor: AppColors.primaryBlue,
-        unselectedItemColor: Colors.grey,
-        showUnselectedLabels: true,
-        type: BottomNavigationBarType.fixed,
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.calendar_today),
-            label: 'Schedule',
+    );
+  }
+
+  Widget _buildSidebar() {
+    return Container(
+      width: 250,
+      color: const Color(0xFFF1F5F9),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Padding(
+            padding: EdgeInsets.all(24),
+            child: Text(
+              'DentalSync',
+              style: TextStyle(
+                color: AppColors.primaryBlue,
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
           ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.folder_open),
-            label: 'Historial',
+          const SizedBox(height: 16),
+          for (var index = 0; index < _sections.length; index++)
+            _buildSidebarItem(index, _sections[index].$1, _sections[index].$2),
+          const Spacer(),
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: InkWell(
+              onTap: () => _selectSection(3),
+              borderRadius: BorderRadius.circular(12),
+              child: Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.grey.shade200),
+                ),
+                child: Row(
+                  children: [
+                    const CircleAvatar(
+                      radius: 16,
+                      backgroundColor: AppColors.lightBlueAccent,
+                      child: Icon(
+                        Icons.person,
+                        size: 20,
+                        color: AppColors.primaryBlue,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _userName,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 12,
+                            ),
+                          ),
+                          const Text(
+                            'Cliente / paciente',
+                            style: TextStyle(
+                              color: AppColors.textSecondary,
+                              fontSize: 10,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Icon(
+                      Icons.chevron_right,
+                      size: 16,
+                      color: AppColors.textSecondary,
+                    ),
+                  ],
+                ),
+              ),
+            ),
           ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.person_outline),
-            label: 'Profile',
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSidebarItem(int index, IconData icon, String title) {
+    final selected = _selectedIndex == index;
+    return InkWell(
+      onTap: () => _selectSection(index),
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: selected ? Colors.white : Colors.transparent,
+          borderRadius: BorderRadius.circular(8),
+          boxShadow: selected
+              ? [BoxShadow(color: Colors.black.withAlpha(13), blurRadius: 4)]
+              : null,
+        ),
+        child: Row(
+          children: [
+            Icon(
+              icon,
+              size: 20,
+              color: selected ? AppColors.primaryBlue : AppColors.textSecondary,
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Text(
+                title,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: selected
+                      ? AppColors.primaryBlue
+                      : AppColors.textSecondary,
+                  fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _selectSection(int index) {
+    setState(() => _selectedIndex = index);
+    if (MediaQuery.of(context).size.width <= 900 &&
+        Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+    }
+  }
+
+  Widget _buildTopBar() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+      color: Colors.white,
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _sections[_selectedIndex].$2,
+                  style: const TextStyle(
+                    color: AppColors.primaryBlue,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 18,
+                  ),
+                ),
+                Text(
+                  _clinicName,
+                  style: const TextStyle(
+                    color: AppColors.textSecondary,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (_selectedIndex == 3)
+            IconButton(
+              tooltip: 'Ayuda',
+              onPressed: _showProfileHelp,
+              icon: const Icon(Icons.help_outline),
+            ),
+          PopupMenuButton<String>(
+            icon: const Icon(
+              Icons.account_circle_outlined,
+              color: AppColors.textSecondary,
+            ),
+            onSelected: (value) async {
+              if (value == 'mode') {
+                context.go('/mode_selector');
+              } else if (value == 'logout') {
+                await ref.read(loginProvider.notifier).logout();
+                if (mounted) context.go('/login');
+              }
+            },
+            itemBuilder: (_) => const [
+              PopupMenuItem(
+                value: 'mode',
+                child: Row(
+                  children: [
+                    Icon(Icons.swap_horiz),
+                    SizedBox(width: 8),
+                    Text('Cambiar modo'),
+                  ],
+                ),
+              ),
+              PopupMenuItem(
+                value: 'logout',
+                child: Row(
+                  children: [
+                    Icon(Icons.logout, color: AppColors.error),
+                    SizedBox(width: 8),
+                    Text(
+                      'Cerrar sesión',
+                      style: TextStyle(color: AppColors.error),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -136,13 +317,39 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
     if (_selectedIndex == 1) {
       return const ClientScheduleView();
     } else if (_selectedIndex == 2) {
-      return const PatientClinicalHistoryView();
+      return const Column(
+        children: [
+          Padding(
+            padding: EdgeInsets.fromLTRB(20, 20, 20, 0),
+            child: PatientSelector(),
+          ),
+          Expanded(child: PatientClinicalHistoryView()),
+        ],
+      );
     } else if (_selectedIndex == 3) {
       return const ClientProfileView();
     }
 
     // Vista Home
     return const ClientHomeView();
+  }
+
+  void _showProfileHelp() {
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Ayuda de perfil'),
+        content: const Text(
+          'Desde esta sección puedes actualizar tus datos, cambiar tu contraseña, configurar recordatorios y vincular un smartwatch.',
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Entendido'),
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -258,8 +465,8 @@ class _ClientHomeViewState extends ConsumerState<ClientHomeView> {
 
   Widget _buildNextAppointmentCard(Map<String, dynamic> appt) {
     final date = DateTime.parse(appt['date_time']).toLocal();
-    final dateStr = DateFormat('dd MMM, yyyy').format(date);
-    final timeStr = DateFormat('hh:mm a').format(date);
+    final dateStr = DateFormat('dd/MM/yyyy').format(date);
+    final timeStr = DateFormat('HH:mm').format(date);
     final doctorName = appt['doctors']?['profiles']?['name'] ?? 'Doctor';
     final serviceName = appt['services']?['service_name'] ?? 'Consulta General';
 
@@ -401,7 +608,7 @@ class _ClientRecordsViewState extends State<ClientRecordsView> {
       padding: const EdgeInsets.all(20.0),
       children: [
         const Text(
-          'Historial Médico',
+          'Historial clínico',
           style: TextStyle(
             fontSize: 24,
             fontWeight: FontWeight.bold,
@@ -436,7 +643,7 @@ class _ClientRecordsViewState extends State<ClientRecordsView> {
                   style: const TextStyle(fontWeight: FontWeight.bold),
                 ),
                 subtitle: Text(
-                  'Dr. $doctorName - ${DateFormat('dd MMM yyyy').format(date)}',
+                  'Dr. $doctorName · ${DateFormat('dd/MM/yyyy').format(date)}',
                 ),
               ),
             );
@@ -455,6 +662,9 @@ class ClientScheduleView extends ConsumerStatefulWidget {
 }
 
 class _ClientScheduleViewState extends ConsumerState<ClientScheduleView> {
+  String _filter = 'upcoming';
+  String _search = '';
+
   @override
   Widget build(BuildContext context) {
     final appointmentsAsync = ref.watch(clientAppointmentsProvider);
@@ -464,121 +674,134 @@ class _ClientScheduleViewState extends ConsumerState<ClientScheduleView> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Campo de búsqueda simulado
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.grey.shade200),
-            ),
-            child: Row(
-              children: [
-                const Icon(Icons.search, color: Colors.grey),
-                const SizedBox(width: 12),
-                Text(
-                  'Search appointments or dentists',
-                  style: TextStyle(color: Colors.grey.shade400),
-                ),
-              ],
+          const PatientSelector(),
+          const SizedBox(height: 16),
+          const Text(
+            'Mis citas',
+            style: TextStyle(
+              fontSize: 26,
+              fontWeight: FontWeight.bold,
+              color: AppColors.primaryBlue,
             ),
           ),
-          const SizedBox(height: 24),
-
-          // Tabs
-          Row(
+          const SizedBox(height: 16),
+          TextField(
+            onChanged: (value) => setState(() => _search = value.trim()),
+            decoration: InputDecoration(
+              hintText: 'Buscar por dentista o servicio',
+              prefixIcon: const Icon(Icons.search),
+              filled: true,
+              fillColor: Colors.white,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide.none,
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Wrap(
+            spacing: 8,
             children: [
-              const Text(
-                'Upcoming',
-                style: TextStyle(
-                  color: AppColors.primaryBlue,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
-                ),
-              ),
-              const SizedBox(width: 24),
-              Text(
-                'Past',
-                style: TextStyle(color: Colors.grey.shade500, fontSize: 16),
-              ),
-              const SizedBox(width: 24),
-              Text(
-                'Cancelled',
-                style: TextStyle(color: Colors.grey.shade500, fontSize: 16),
-              ),
+              _filterChip('upcoming', 'Próximas'),
+              _filterChip('completed', 'Anteriores'),
+              _filterChip('cancelled', 'Canceladas'),
             ],
           ),
-          const SizedBox(height: 8),
-          Container(width: 70, height: 3, color: AppColors.primaryBlue),
-          const SizedBox(height: 24),
-
-          appointmentsAsync.when(
-            loading: () => const Center(child: CircularProgressIndicator()),
-            error: (err, stack) => Center(child: Text('Error: $err')),
-            data: (appointments) {
-              if (appointments.isEmpty) {
-                return const Center(child: Text('No appointments found.'));
-              }
-
-              final activeAppts = appointments
-                  .where(
-                    (a) => a.status == 'in_lobby' || a.status == 'in_treatment',
-                  )
-                  .toList();
-              final activeAppt = activeAppts.isNotEmpty
-                  ? activeAppts.first
-                  : null;
-              final otherAppts = appointments
-                  .where((a) => a.id != (activeAppt?.id))
-                  .toList();
-
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (activeAppt != null) ...[
-                    const Text(
-                      'Your Current Turn',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    _buildCurrentTurnCard(activeAppt),
-                    const SizedBox(height: 24),
-                  ],
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        'All Appointments',
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const Text(
-                        'View Calendar',
-                        style: TextStyle(
-                          color: AppColors.primaryBlue,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  ...otherAppts.map(
-                    (appt) => Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
-                      child: _buildAppointmentListCard(appt),
-                    ),
-                  ),
-                ],
-              );
-            },
+          const SizedBox(height: 16),
+          Expanded(
+            child: appointmentsAsync.when(
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (err, stack) =>
+                  const Center(child: Text('No se pudieron cargar las citas.')),
+              data: _buildAppointments,
+            ),
           ),
         ],
       ),
+    );
+  }
+
+  Widget _filterChip(String value, String label) {
+    return ChoiceChip(
+      label: Text(label),
+      selected: _filter == value,
+      onSelected: (_) => setState(() => _filter = value),
+    );
+  }
+
+  Widget _buildAppointments(List<Appointment> appointments) {
+    bool matchesStatus(Appointment appointment) {
+      if (_filter == 'upcoming') {
+        return const {
+          'upcoming',
+          'in_lobby',
+          'in_treatment',
+        }.contains(appointment.status);
+      }
+      return appointment.status == _filter;
+    }
+
+    bool matchesSearch(Appointment appointment) {
+      if (_search.isEmpty) return true;
+      final text =
+          '${appointment.doctorName ?? ''} '
+                  '${appointment.serviceName ?? ''}'
+              .toLowerCase();
+      return text.contains(_search.toLowerCase());
+    }
+
+    final filtered = appointments
+        .where((item) => matchesStatus(item) && matchesSearch(item))
+        .toList();
+    final active = _filter == 'upcoming'
+        ? filtered
+              .where(
+                (item) =>
+                    item.status == 'in_lobby' || item.status == 'in_treatment',
+              )
+              .firstOrNull
+        : null;
+    final remaining = filtered.where((item) => item.id != active?.id).toList();
+
+    if (filtered.isEmpty) {
+      return Center(
+        child: Text(
+          _search.isEmpty
+              ? 'No hay citas en esta categoría.'
+              : 'No se encontraron citas con esa búsqueda.',
+          textAlign: TextAlign.center,
+          style: const TextStyle(color: AppColors.textSecondary),
+        ),
+      );
+    }
+
+    return ListView(
+      children: [
+        if (active != null) ...[
+          const Text(
+            'Tu turno actual',
+            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 12),
+          _buildCurrentTurnCard(active),
+          const SizedBox(height: 24),
+        ],
+        Text(
+          _filter == 'upcoming'
+              ? 'Próximas citas'
+              : _filter == 'completed'
+              ? 'Citas anteriores'
+              : 'Citas canceladas',
+          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 12),
+        ...remaining.map(
+          (appointment) => Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: _buildAppointmentListCard(appointment),
+          ),
+        ),
+      ],
     );
   }
 
@@ -592,33 +815,20 @@ class _ClientScheduleViewState extends ConsumerState<ClientScheduleView> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
-                'QUEUE NUMBER',
-                style: TextStyle(
-                  color: Colors.white70,
-                  fontSize: 12,
-                  letterSpacing: 1,
-                ),
-              ),
-              const Text(
-                'ESTIMATED: 12 MIN',
-                style: TextStyle(
-                  color: Colors.white70,
-                  fontSize: 12,
-                  letterSpacing: 1,
-                ),
-              ),
-            ],
+          const Text(
+            'NÚMERO DE TURNO',
+            style: TextStyle(
+              color: Colors.white70,
+              fontSize: 12,
+              letterSpacing: 1,
+            ),
           ),
           const SizedBox(height: 8),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                appointment.queueCode ?? 'N/A',
+                appointment.queueCode ?? 'Sin asignar',
                 style: const TextStyle(
                   color: Colors.white,
                   fontSize: 48,
@@ -640,8 +850,8 @@ class _ClientScheduleViewState extends ConsumerState<ClientScheduleView> {
                     const SizedBox(width: 4),
                     Text(
                       appointment.status == 'in_lobby'
-                          ? 'IN QUEUE'
-                          : 'IN TREATMENT',
+                          ? 'EN ESPERA'
+                          : 'EN CONSULTA',
                       style: const TextStyle(
                         color: Colors.white,
                         fontWeight: FontWeight.bold,
@@ -671,7 +881,7 @@ class _ClientScheduleViewState extends ConsumerState<ClientScheduleView> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Dr. ${appointment.doctorName ?? 'Dentist'}',
+                    'Dr. ${appointment.doctorName ?? 'Dentista'}',
                     style: const TextStyle(
                       color: Colors.white,
                       fontWeight: FontWeight.bold,
@@ -679,7 +889,7 @@ class _ClientScheduleViewState extends ConsumerState<ClientScheduleView> {
                     ),
                   ),
                   Text(
-                    appointment.serviceName ?? 'Consultation',
+                    appointment.serviceName ?? 'Consulta',
                     style: const TextStyle(color: Colors.white70, fontSize: 14),
                   ),
                 ],
@@ -692,11 +902,25 @@ class _ClientScheduleViewState extends ConsumerState<ClientScheduleView> {
   }
 
   Widget _buildAppointmentListCard(Appointment appointment) {
-    final month = DateFormat('MMM').format(appointment.dateTime).toUpperCase();
+    const months = [
+      'ENE',
+      'FEB',
+      'MAR',
+      'ABR',
+      'MAY',
+      'JUN',
+      'JUL',
+      'AGO',
+      'SEP',
+      'OCT',
+      'NOV',
+      'DIC',
+    ];
+    final month = months[appointment.dateTime.month - 1];
     final day = DateFormat('dd').format(appointment.dateTime);
-    final time = DateFormat('hh:mm a').format(appointment.dateTime);
+    final time = DateFormat('HH:mm').format(appointment.dateTime);
     final doctor = appointment.doctorName ?? 'Doctor';
-    final details = '${appointment.serviceName ?? 'Consultation'} • $time';
+    final details = '${appointment.serviceName ?? 'Consulta'} • $time';
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -1006,7 +1230,7 @@ class LegacyClientProfileView extends ConsumerWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            'Paciente ID: $userId',
+            'Identificador del paciente: $userId',
             style: const TextStyle(color: AppColors.textSecondary),
           ),
           const SizedBox(height: 4),
@@ -1018,8 +1242,8 @@ class LegacyClientProfileView extends ConsumerWidget {
           _buildSectionTitle('PERFIL'),
           _buildSettingsTile(
             icon: Icons.person_outline,
-            title: 'Información Personal',
-            subtitle: 'Nombre, ID y Contacto',
+            title: 'Información personal',
+            subtitle: 'Nombre, identificador y contacto',
             trailing: const Icon(
               Icons.arrow_forward_ios,
               size: 16,
@@ -1042,7 +1266,7 @@ class LegacyClientProfileView extends ConsumerWidget {
           const SizedBox(height: 12),
           _buildSettingsTile(
             icon: Icons.watch_outlined,
-            title: 'Alertas de Smartwatch',
+            title: 'Alertas del reloj inteligente',
             subtitle: watchSubtitle,
             trailing: Switch(
               value: isWatchLinked,
@@ -1072,7 +1296,7 @@ class LegacyClientProfileView extends ConsumerWidget {
           const SizedBox(height: 12),
           _buildSettingsTile(
             icon: Icons.lock_reset,
-            title: 'Cambiar Contraseña',
+            title: 'Cambiar contraseña',
             subtitle: 'Última actualización hace 3 meses',
             trailing: const Icon(
               Icons.arrow_forward_ios,
@@ -1099,7 +1323,7 @@ class LegacyClientProfileView extends ConsumerWidget {
               ),
               icon: const Icon(Icons.logout),
               label: const Text(
-                'Cerrar Sesión',
+                'Cerrar sesión',
                 style: TextStyle(fontWeight: FontWeight.bold),
               ),
             ),

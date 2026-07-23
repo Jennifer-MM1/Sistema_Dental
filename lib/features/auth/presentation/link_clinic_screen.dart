@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:sistema_dental/core/theme/app_colors.dart';
 import 'package:sistema_dental/features/auth/providers/auth_providers.dart';
 
@@ -33,7 +34,7 @@ class _LinkClinicScreenState extends ConsumerState<LinkClinicScreen> {
     });
 
     final authRepo = ref.read(authRepositoryProvider);
-    final linkedRole = await authRepo.linkClinicWithCode(code, widget.role);
+    final linkedRole = await authRepo.linkClinicWithCode(code);
 
     if (!mounted) return;
     setState(() {
@@ -64,6 +65,21 @@ class _LinkClinicScreenState extends ConsumerState<LinkClinicScreen> {
         ),
       );
     }
+  }
+
+  Future<void> _scanQr() async {
+    setState(() => _isScanning = true);
+    final rawValue = await Navigator.of(context).push<String>(
+      MaterialPageRoute(builder: (_) => const _InvitationQrScannerPage()),
+    );
+    if (!mounted) return;
+    setState(() => _isScanning = false);
+    if (rawValue == null) return;
+
+    final uri = Uri.tryParse(rawValue);
+    final code = uri?.queryParameters['code'] ?? rawValue;
+    _codeController.text = code.trim();
+    await _handleLinkCode();
   }
 
   @override
@@ -102,10 +118,7 @@ class _LinkClinicScreenState extends ConsumerState<LinkClinicScreen> {
               const SizedBox(height: 8),
               const Text(
                 'Ingresa el código proporcionado por tu dentista o escanea el código QR para asociar tu cuenta a la clínica.',
-                style: TextStyle(
-                  fontSize: 16,
-                  color: AppColors.textSecondary,
-                ),
+                style: TextStyle(fontSize: 16, color: AppColors.textSecondary),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 48),
@@ -116,10 +129,13 @@ class _LinkClinicScreenState extends ConsumerState<LinkClinicScreen> {
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(24),
-                  border: Border.all(color: AppColors.primaryBlue.withOpacity(0.3), width: 2),
+                  border: Border.all(
+                    color: AppColors.primaryBlue.withValues(alpha: 0.3),
+                    width: 2,
+                  ),
                   boxShadow: [
                     BoxShadow(
-                      color: AppColors.primaryBlue.withOpacity(0.05),
+                      color: AppColors.primaryBlue.withValues(alpha: 0.05),
                       blurRadius: 20,
                       offset: const Offset(0, 10),
                     ),
@@ -129,28 +145,30 @@ class _LinkClinicScreenState extends ConsumerState<LinkClinicScreen> {
                     ? Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: const [
-                          CircularProgressIndicator(color: AppColors.primaryBlue),
+                          CircularProgressIndicator(
+                            color: AppColors.primaryBlue,
+                          ),
                           SizedBox(height: 16),
-                          Text('Abriendo cámara...', style: TextStyle(color: AppColors.primaryBlue, fontWeight: FontWeight.bold)),
+                          Text(
+                            'Abriendo cámara...',
+                            style: TextStyle(
+                              color: AppColors.primaryBlue,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
                         ],
                       )
                     : InkWell(
                         borderRadius: BorderRadius.circular(24),
-                        onTap: () {
-                          setState(() => _isScanning = true);
-                          Future.delayed(const Duration(seconds: 2), () {
-                            if (mounted) {
-                              setState(() => _isScanning = false);
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('Simulación: Cámara no disponible en esta plataforma. Ingresa el código manualmente.')),
-                              );
-                            }
-                          });
-                        },
+                        onTap: _scanQr,
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: const [
-                            Icon(Icons.qr_code_scanner, size: 64, color: AppColors.primaryBlue),
+                            Icon(
+                              Icons.qr_code_scanner,
+                              size: 64,
+                              color: AppColors.primaryBlue,
+                            ),
                             SizedBox(height: 16),
                             Text(
                               'Toca para escanear QR',
@@ -171,7 +189,14 @@ class _LinkClinicScreenState extends ConsumerState<LinkClinicScreen> {
                   Expanded(child: Divider()),
                   Padding(
                     padding: EdgeInsets.symmetric(horizontal: 16),
-                    child: Text('O INGRESA EL CÓDIGO', style: TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold)),
+                    child: Text(
+                      'O INGRESA EL CÓDIGO',
+                      style: TextStyle(
+                        color: Colors.grey,
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                   ),
                   Expanded(child: Divider()),
                 ],
@@ -182,10 +207,17 @@ class _LinkClinicScreenState extends ConsumerState<LinkClinicScreen> {
               TextField(
                 controller: _codeController,
                 textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 24, letterSpacing: 4, fontWeight: FontWeight.bold),
+                style: const TextStyle(
+                  fontSize: 24,
+                  letterSpacing: 4,
+                  fontWeight: FontWeight.bold,
+                ),
                 decoration: InputDecoration(
                   hintText: 'X X X - X X X',
-                  hintStyle: TextStyle(color: Colors.grey.shade300, letterSpacing: 4),
+                  hintStyle: TextStyle(
+                    color: Colors.grey.shade300,
+                    letterSpacing: 4,
+                  ),
                   filled: true,
                   fillColor: Colors.white,
                   border: OutlineInputBorder(
@@ -194,7 +226,10 @@ class _LinkClinicScreenState extends ConsumerState<LinkClinicScreen> {
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(16),
-                    borderSide: const BorderSide(color: AppColors.primaryBlue, width: 2),
+                    borderSide: const BorderSide(
+                      color: AppColors.primaryBlue,
+                      width: 2,
+                    ),
                   ),
                 ),
               ),
@@ -216,12 +251,87 @@ class _LinkClinicScreenState extends ConsumerState<LinkClinicScreen> {
                     ? const CircularProgressIndicator(color: Colors.white)
                     : const Text(
                         'Vincular Cuenta',
-                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
               ),
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _InvitationQrScannerPage extends StatefulWidget {
+  const _InvitationQrScannerPage();
+
+  @override
+  State<_InvitationQrScannerPage> createState() =>
+      _InvitationQrScannerPageState();
+}
+
+class _InvitationQrScannerPageState extends State<_InvitationQrScannerPage> {
+  final MobileScannerController _controller = MobileScannerController(
+    formats: const [BarcodeFormat.qrCode],
+  );
+  bool _hasResult = false;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _onDetect(BarcodeCapture capture) async {
+    if (_hasResult) return;
+    final value = capture.barcodes
+        .map((barcode) => barcode.rawValue)
+        .whereType<String>()
+        .firstOrNull;
+    if (value == null || value.trim().isEmpty) return;
+
+    _hasResult = true;
+    await _controller.stop();
+    if (mounted) Navigator.pop(context, value);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        title: const Text('Escanear invitación'),
+        foregroundColor: Colors.white,
+        backgroundColor: Colors.black,
+      ),
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          MobileScanner(controller: _controller, onDetect: _onDetect),
+          Center(
+            child: Container(
+              width: 260,
+              height: 260,
+              decoration: BoxDecoration(
+                border: Border.all(color: Colors.white, width: 3),
+                borderRadius: BorderRadius.circular(20),
+              ),
+            ),
+          ),
+          const Positioned(
+            left: 24,
+            right: 24,
+            bottom: 48,
+            child: Text(
+              'Coloca el código QR dentro del recuadro.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.white, fontSize: 16),
+            ),
+          ),
+        ],
       ),
     );
   }

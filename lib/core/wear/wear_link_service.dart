@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -19,9 +20,108 @@ class WearLinkResult {
 
 class WearLinkService {
   static const _channel = MethodChannel('dental_sync/wear_link');
-  static const instance = WearLinkService._();
+  static final instance = WearLinkService._();
 
-  const WearLinkService._();
+  WearLinkService._();
+
+  Timer? _companionTimer;
+  StreamSubscription<AuthState>? _authSubscription;
+  bool _syncing = false;
+
+  Future<void> startPhoneCompanion() async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return;
+    _companionTimer?.cancel();
+    await _authSubscription?.cancel();
+
+    _authSubscription = Supabase.instance.client.auth.onAuthStateChange.listen((
+      event,
+    ) async {
+      if (event.event == AuthChangeEvent.signedOut) {
+        await unlinkCurrentSession();
+      } else if (event.session != null) {
+        await syncLinkedSession();
+      }
+    });
+
+    await processPendingActions();
+    await syncLinkedSession();
+    _companionTimer = Timer.periodic(const Duration(seconds: 20), (_) async {
+      await processPendingActions();
+      await syncLinkedSession();
+    });
+  }
+
+  Future<void> stopPhoneCompanion() async {
+    _companionTimer?.cancel();
+    _companionTimer = null;
+    await _authSubscription?.cancel();
+    _authSubscription = null;
+  }
+
+  Future<bool> isCurrentSessionLinked() async {
+    try {
+      return await _channel.invokeMethod<bool>('isWearSessionLinked') ?? false;
+    } on MissingPluginException {
+      return false;
+    } on PlatformException {
+      return false;
+    }
+  }
+
+  Future<void> syncLinkedSession() async {
+    if (_syncing || Supabase.instance.client.auth.currentUser == null) return;
+    if (!await isCurrentSessionLinked()) return;
+    _syncing = true;
+    try {
+      await linkCurrentSession(role: '');
+    } finally {
+      _syncing = false;
+    }
+  }
+
+  Future<bool> sendActionToPhone({
+    required String appointmentId,
+    required String action,
+  }) async {
+    try {
+      return await _channel.invokeMethod<bool>('sendWearAction', {
+            'appointment_id': appointmentId,
+            'action': action,
+          }) ??
+          false;
+    } on MissingPluginException {
+      return false;
+    } on PlatformException {
+      return false;
+    }
+  }
+
+  Future<void> processPendingActions() async {
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user == null) return;
+    try {
+      final raw = await _channel.invokeListMethod<dynamic>(
+        'consumePendingWearActions',
+      );
+      if (raw == null || raw.isEmpty) return;
+      for (final item in raw) {
+        if (item is! Map) continue;
+        try {
+          await _applyWearAction(
+            appointmentId: item['appointment_id']?.toString() ?? '',
+            action: item['action']?.toString() ?? '',
+            userId: user.id,
+          );
+        } catch (e) {
+          debugPrint('[Wear] Acción rechazada o no procesada: $e');
+        }
+      }
+    } on MissingPluginException {
+      return;
+    } on PlatformException catch (e) {
+      debugPrint('[Wear] No se pudieron leer acciones pendientes: $e');
+    }
+  }
 
   Future<int> getConnectedWearDevices() async {
     try {
@@ -156,6 +256,97 @@ class WearLinkService {
     }
   }
 
+  Future<void> _applyWearAction({
+    required String appointmentId,
+    required String action,
+    required String userId,
+  }) async {
+    if (appointmentId.isEmpty || action.isEmpty) return;
+    final client = Supabase.instance.client;
+    final membership = await client
+        .from('clinic_memberships')
+        .select('clinic_id, role_in_clinic')
+        .eq('user_id', userId)
+        .eq('is_active', true)
+        .limit(1)
+        .maybeSingle();
+    if (membership == null) return;
+
+    final clinicId = membership['clinic_id'] as String?;
+    final clinicRole = membership['role_in_clinic'] as String? ?? '';
+    final role = _wearRole('', clinicRole, null);
+    if (clinicId == null || (role != 'dentist' && role != 'secretary')) return;
+
+    final appointment = await client
+        .from('appointments')
+        .select('id, clinic_id, doctor_id, status')
+        .eq('id', appointmentId)
+        .maybeSingle();
+    if (appointment == null || appointment['clinic_id'] != clinicId) return;
+
+    if (role == 'dentist') {
+      final doctor = await client
+          .from('doctors')
+          .select('id')
+          .eq('user_id', userId)
+          .eq('clinic_id', clinicId)
+          .maybeSingle();
+      if (doctor == null || appointment['doctor_id'] != doctor['id']) return;
+    }
+
+    final transition = _wearTransition(
+      role: role,
+      action: action,
+      currentStatus: appointment['status'] as String? ?? '',
+    );
+    if (transition == null) return;
+
+    final updated = await client
+        .from('appointments')
+        .update({'status': transition})
+        .eq('id', appointmentId)
+        .eq('status', appointment['status'] as String)
+        .select('id');
+    if ((updated as List).isEmpty) return;
+
+    unawaited(_notifyPatient(appointmentId, transition));
+  }
+
+  Future<void> _notifyPatient(String appointmentId, String status) async {
+    try {
+      await Supabase.instance.client.functions.invoke(
+        'notify-patient-turn',
+        body: {'appointmentId': appointmentId, 'newStatus': status},
+      );
+    } catch (e) {
+      debugPrint('[Wear] La cita cambió, pero la notificación falló: $e');
+    }
+  }
+
+  String? _wearTransition({
+    required String role,
+    required String action,
+    required String currentStatus,
+  }) {
+    if (role == 'secretary') {
+      if (action == 'check_in' && currentStatus == 'upcoming') {
+        return 'in_lobby';
+      }
+      if (action == 'call_patient' && currentStatus == 'in_lobby') {
+        return 'in_treatment';
+      }
+    }
+    if (role == 'dentist') {
+      if (action == 'call_patient' && currentStatus == 'in_lobby') {
+        return 'in_treatment';
+      }
+      if (action == 'complete' && currentStatus == 'in_treatment') {
+        return 'completed';
+      }
+    }
+    return null;
+  }
+
   Future<Map<String, dynamic>> _buildCompanionState({
     required String roleLabel,
   }) async {
@@ -182,10 +373,13 @@ class WearLinkService {
 
     Map<String, dynamic>? patientQueue;
     Map<String, dynamic>? doctorQueue;
+    Map<String, dynamic>? secretaryQueue;
     if (role == 'dentist' && clinicId != null) {
-      doctorQueue = await _buildDoctorQueue(clinicId);
-    } else if (clinicId != null) {
-      patientQueue = await _buildPatientQueue(user.id, clinicId);
+      doctorQueue = await _buildDoctorQueue(clinicId, user.id);
+    } else if (role == 'secretary' && clinicId != null) {
+      secretaryQueue = await _buildSecretaryQueue(clinicId);
+    } else {
+      patientQueue = await _buildPatientQueue(user.id);
     }
 
     return {
@@ -195,6 +389,7 @@ class WearLinkService {
       'summary': summary,
       'patient_queue': patientQueue,
       'doctor_queue': doctorQueue,
+      'secretary_queue': secretaryQueue,
     };
   }
 
@@ -227,7 +422,15 @@ class WearLinkService {
           .inFilter('status', ['upcoming', 'in_lobby', 'in_treatment'])
           .order('date_time')
           .limit(20);
-      appointmentRows = List<Map<String, dynamic>>.from(appointments);
+      appointmentRows = List<Map<String, dynamic>>.from(appointments).where((
+        appointment,
+      ) {
+        if (appointment['status'] != 'upcoming') return true;
+        final value = DateTime.tryParse(
+          appointment['date_time'] as String? ?? '',
+        );
+        return value != null && value.isAfter(DateTime.now().toUtc());
+      }).toList();
     }
 
     final next = appointmentRows.isEmpty ? null : appointmentRows.first;
@@ -246,10 +449,7 @@ class WearLinkService {
     };
   }
 
-  Future<Map<String, dynamic>?> _buildPatientQueue(
-    String userId,
-    String clinicId,
-  ) async {
+  Future<Map<String, dynamic>?> _buildPatientQueue(String userId) async {
     final client = Supabase.instance.client;
     final patients = await client
         .from('patients')
@@ -265,6 +465,7 @@ class WearLinkService {
         .select('''
           id,
           clinic_id,
+          doctor_id,
           patient_id,
           date_time,
           status,
@@ -273,18 +474,23 @@ class WearLinkService {
           doctor:doctors(cabin_assigned, user:profiles(name)),
           service:services(service_name, duration_mins)
         ''')
-        .eq('clinic_id', clinicId)
         .inFilter('patient_id', patientIds)
         .inFilter('status', ['upcoming', 'in_lobby', 'in_treatment'])
         .order('date_time')
-        .limit(1);
-    final rows = List<Map<String, dynamic>>.from(appointments);
+        .limit(20);
+    final rows = List<Map<String, dynamic>>.from(appointments).where((row) {
+      if (row['status'] != 'upcoming') return true;
+      final value = DateTime.tryParse(row['date_time'] as String? ?? '');
+      return value != null && value.isAfter(DateTime.now().toUtc());
+    }).toList();
     if (rows.isEmpty) return null;
 
-    final appointment = rows.first;
+    final appointment = _selectQueueCurrent(rows);
+    final clinicId = appointment['clinic_id'] as String;
     final ahead = await _countPeopleAhead(
       clinicId: clinicId,
       dateTime: appointment['date_time'] as String,
+      doctorId: appointment['doctor_id'] as String?,
     );
     return {
       'patient_name': _patientName(appointment),
@@ -302,8 +508,18 @@ class WearLinkService {
     };
   }
 
-  Future<Map<String, dynamic>?> _buildDoctorQueue(String clinicId) async {
+  Future<Map<String, dynamic>?> _buildDoctorQueue(
+    String clinicId,
+    String userId,
+  ) async {
     final client = Supabase.instance.client;
+    final doctor = await client
+        .from('doctors')
+        .select('id')
+        .eq('clinic_id', clinicId)
+        .eq('user_id', userId)
+        .maybeSingle();
+    if (doctor == null) return null;
     final appointments = await client
         .from('appointments')
         .select('''
@@ -315,13 +531,16 @@ class WearLinkService {
           service:services(duration_mins)
         ''')
         .eq('clinic_id', clinicId)
+        .eq('doctor_id', doctor['id'])
         .inFilter('status', ['upcoming', 'in_lobby', 'in_treatment'])
+        .gte('date_time', _todayStartUtc())
+        .lt('date_time', _tomorrowStartUtc())
         .order('date_time')
         .limit(10);
     final rows = List<Map<String, dynamic>>.from(appointments);
     if (rows.isEmpty) return null;
 
-    final current = rows.first;
+    final current = _selectQueueCurrent(rows);
     return {
       'appointment_id': current['id'] as String,
       'patient_name': _patientName(current),
@@ -330,30 +549,101 @@ class WearLinkService {
       'estimated_minutes':
           ((current['service']?['duration_mins'] as int?) ?? 6) * rows.length,
       'status_label': _statusLabel(current['status'] as String? ?? 'upcoming'),
+      'status': current['status'] as String? ?? 'upcoming',
+    };
+  }
+
+  Future<Map<String, dynamic>?> _buildSecretaryQueue(String clinicId) async {
+    final client = Supabase.instance.client;
+    final appointments = await client
+        .from('appointments')
+        .select('''
+          id,
+          date_time,
+          status,
+          queue_code,
+          patient:patients(first_name, last_name),
+          doctor:doctors(user:profiles(name)),
+          service:services(duration_mins)
+        ''')
+        .eq('clinic_id', clinicId)
+        .inFilter('status', ['upcoming', 'in_lobby', 'in_treatment'])
+        .gte('date_time', _todayStartUtc())
+        .lt('date_time', _tomorrowStartUtc())
+        .order('date_time')
+        .limit(20);
+    final rows = List<Map<String, dynamic>>.from(appointments);
+    if (rows.isEmpty) return null;
+    final current = _selectQueueCurrent(rows);
+    return {
+      'appointment_id': current['id'] as String,
+      'patient_name': _patientName(current),
+      'queue_code': current['queue_code'] as String? ?? 'Sin turno',
+      'queue_count': rows.length,
+      'estimated_minutes':
+          ((current['service']?['duration_mins'] as int?) ?? 6) * rows.length,
+      'status_label': _statusLabel(current['status'] as String? ?? 'upcoming'),
+      'status': current['status'] as String? ?? 'upcoming',
+      'doctor_name':
+          current['doctor']?['user']?['name'] as String? ?? 'Dentista',
     };
   }
 
   Future<int> _countPeopleAhead({
     required String clinicId,
     required String dateTime,
+    String? doctorId,
   }) async {
-    final response = await Supabase.instance.client
+    var query = Supabase.instance.client
         .from('appointments')
         .select('id')
         .eq('clinic_id', clinicId)
         .inFilter('status', ['upcoming', 'in_lobby'])
+        .gte('date_time', _dayStartUtc(dateTime))
         .lt('date_time', dateTime);
+    if (doctorId != null) query = query.eq('doctor_id', doctorId);
+    final response = await query;
     return List.from(response).length;
+  }
+
+  String _todayStartUtc() {
+    final now = DateTime.now();
+    return DateTime(now.year, now.month, now.day).toUtc().toIso8601String();
+  }
+
+  String _tomorrowStartUtc() {
+    final now = DateTime.now();
+    return DateTime(now.year, now.month, now.day + 1).toUtc().toIso8601String();
+  }
+
+  String _dayStartUtc(String value) {
+    final local = DateTime.parse(value).toLocal();
+    return DateTime(
+      local.year,
+      local.month,
+      local.day,
+    ).toUtc().toIso8601String();
+  }
+
+  Map<String, dynamic> _selectQueueCurrent(List<Map<String, dynamic>> rows) {
+    for (final status in const ['in_treatment', 'in_lobby', 'upcoming']) {
+      for (final row in rows) {
+        if (row['status'] == status) return row;
+      }
+    }
+    return rows.first;
   }
 
   String _wearRole(String roleLabel, String? clinicRole, String? profileRole) {
     final source =
         '${roleLabel.toLowerCase()} ${clinicRole ?? ''} ${profileRole ?? ''}';
+    if (source.contains('secretary') || source.contains('secretaria')) {
+      return 'secretary';
+    }
     if (source.contains('dentist') ||
         source.contains('dentista') ||
-        source.contains('secretary') ||
-        source.contains('secretaria') ||
-        source.contains('owner')) {
+        source.contains('owner') ||
+        source.contains('admin')) {
       return 'dentist';
     }
     return 'patient';

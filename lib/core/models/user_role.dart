@@ -1,9 +1,9 @@
 /// Enum que define los 4 roles del sistema DentalSync Connect.
 /// Cada rol determina a qué panel(es) tiene acceso el usuario.
 enum UserRole {
-  dentist,     // Acceso a panel dentista (ahora actúa como admin/owner)
+  dentist, // Acceso a panel dentista (ahora actúa como admin/owner)
   secretary, // Acceso a panel secretaria
-  client;         // Acceso a panel cliente
+  client; // Acceso a panel cliente
 
   /// Convierte la cadena almacenada en Supabase al enum correspondiente.
   static UserRole fromString(String role) {

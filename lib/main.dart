@@ -8,22 +8,23 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:sistema_dental/core/theme/app_theme.dart';
 import 'package:sistema_dental/core/router/app_router.dart';
 import 'package:sistema_dental/core/notifications/fcm_service.dart';
+import 'package:sistema_dental/core/wear/wear_link_service.dart';
 // ignore: uri_does_not_exist
 import 'firebase_options.dart'; // Generado por FlutterFire CLI
 
 void main() async {
-  print("=== INICIANDO APP ===");
+  debugPrint("=== INICIANDO APP ===");
   try {
     WidgetsFlutterBinding.ensureInitialized();
-    print("[1/4] WidgetsFlutterBinding inicializado.");
+    debugPrint("[1/4] WidgetsFlutterBinding inicializado.");
   } catch (e) {
-    print("ERROR en WidgetsFlutterBinding: $e");
+    debugPrint("ERROR en WidgetsFlutterBinding: $e");
   }
 
   // 1. Cargar variables de entorno
   try {
     await dotenv.load(fileName: '.env');
-    print("[2/4] Variables de entorno (.env) cargadas.");
+    debugPrint("[2/4] Variables de entorno (.env) cargadas.");
   } catch (e) {
     debugPrint('[Startup] No se pudo cargar .env: $e');
   }
@@ -31,12 +32,12 @@ void main() async {
   // 2. Inicializar Firebase
   var firebaseReady = false;
   try {
-    print("Inicializando Firebase...");
+    debugPrint("Inicializando Firebase...");
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     ).timeout(const Duration(seconds: 8));
     firebaseReady = true;
-    print("[3/4] Firebase inicializado con éxito.");
+    debugPrint("[3/4] Firebase inicializado con éxito.");
   } catch (e) {
     debugPrint('[Startup] Firebase no inició: $e');
   }
@@ -46,26 +47,28 @@ void main() async {
   final supabaseAnonKey = dotenv.env['SUPABASE_ANON_KEY'] ?? '';
 
   if (supabaseUrl.isEmpty || supabaseAnonKey.isEmpty) {
-    print("ERROR: SUPABASE_URL o SUPABASE_ANON_KEY vacíos en .env");
+    debugPrint("ERROR: SUPABASE_URL o SUPABASE_ANON_KEY vacíos en .env");
     runApp(const StartupErrorApp());
     return;
   }
 
   try {
-    print("Inicializando Supabase...");
+    debugPrint("Inicializando Supabase...");
     await Supabase.initialize(
       url: supabaseUrl,
       publishableKey: supabaseAnonKey,
     ).timeout(const Duration(seconds: 8));
-    print("[4/4] Supabase inicializado con éxito.");
+    debugPrint("[4/4] Supabase inicializado con éxito.");
   } catch (e) {
     debugPrint('[Startup] Supabase no inició: $e');
     runApp(const StartupErrorApp());
     return;
   }
 
-  print("=== INICIALIZACIÓN COMPLETA - Lanzando MaterialApp ===");
+  debugPrint("=== INICIALIZACIÓN COMPLETA - Lanzando MaterialApp ===");
   runApp(const ProviderScope(child: MyApp()));
+
+  unawaited(WearLinkService.instance.startPhoneCompanion());
 
   if (firebaseReady) {
     unawaited(_initializeNotifications());

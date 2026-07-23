@@ -1,4 +1,4 @@
-enum WearRole { patient, dentist }
+enum WearRole { patient, dentist, secretary }
 
 class WearPatientQueueData {
   final String patientName;
@@ -64,6 +64,8 @@ class WearDoctorQueueData {
   final int queueCount;
   final int estimatedMinutes;
   final String statusLabel;
+  final String status;
+  final String doctorName;
 
   const WearDoctorQueueData({
     required this.appointmentId,
@@ -72,6 +74,8 @@ class WearDoctorQueueData {
     required this.queueCount,
     required this.estimatedMinutes,
     required this.statusLabel,
+    required this.status,
+    required this.doctorName,
   });
 
   factory WearDoctorQueueData.fromJson(Map<String, dynamic> json) {
@@ -82,6 +86,8 @@ class WearDoctorQueueData {
       queueCount: _asInt(json['queue_count']),
       estimatedMinutes: _asInt(json['estimated_minutes']),
       statusLabel: json['status_label'] as String? ?? 'Listo',
+      status: json['status'] as String? ?? 'upcoming',
+      doctorName: json['doctor_name'] as String? ?? 'Dentista',
     );
   }
 
@@ -92,6 +98,8 @@ class WearDoctorQueueData {
     'queue_count': queueCount,
     'estimated_minutes': estimatedMinutes,
     'status_label': statusLabel,
+    'status': status,
+    'doctor_name': doctorName,
   };
 
   static const demo = WearDoctorQueueData(
@@ -101,6 +109,8 @@ class WearDoctorQueueData {
     queueCount: 0,
     estimatedMinutes: 0,
     statusLabel: 'Sin citas',
+    status: 'upcoming',
+    doctorName: 'Dentista',
   );
 }
 
@@ -156,6 +166,7 @@ class WearStartupData {
   final WearRole role;
   final WearPatientQueueData? patient;
   final WearDoctorQueueData? doctor;
+  final WearDoctorQueueData? secretary;
   final WearPatientSummaryData? summary;
   final bool isLinked;
 
@@ -163,16 +174,20 @@ class WearStartupData {
     required this.role,
     required this.patient,
     required this.doctor,
+    required this.secretary,
     required this.summary,
     required this.isLinked,
   });
 
   factory WearStartupData.fromJson(Map<String, dynamic> json) {
-    final role = json['role'] == 'dentist' || json['role'] == 'secretary'
-        ? WearRole.dentist
-        : WearRole.patient;
+    final role = switch (json['role']) {
+      'dentist' => WearRole.dentist,
+      'secretary' => WearRole.secretary,
+      _ => WearRole.patient,
+    };
     final patientJson = json['patient_queue'];
     final doctorJson = json['doctor_queue'];
+    final secretaryJson = json['secretary_queue'];
     final summaryJson = json['summary'];
 
     return WearStartupData(
@@ -184,6 +199,11 @@ class WearStartupData {
           : null,
       doctor: doctorJson is Map
           ? WearDoctorQueueData.fromJson(Map<String, dynamic>.from(doctorJson))
+          : null,
+      secretary: secretaryJson is Map
+          ? WearDoctorQueueData.fromJson(
+              Map<String, dynamic>.from(secretaryJson),
+            )
           : null,
       summary: summaryJson is Map
           ? WearPatientSummaryData.fromJson(
