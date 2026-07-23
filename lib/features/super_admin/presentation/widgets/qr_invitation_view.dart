@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 import 'package:sistema_dental/core/theme/app_colors.dart';
 import 'package:sistema_dental/core/supabase/supabase_provider.dart';
 
@@ -12,6 +13,7 @@ class QRInvitationView extends ConsumerStatefulWidget {
 
 class _QRInvitationViewState extends ConsumerState<QRInvitationView> {
   bool _isLoading = false;
+  String _targetRole = 'client';
 
   Future<void> _showTemporalQR() async {
     setState(() => _isLoading = true);
@@ -31,17 +33,14 @@ class _QRInvitationViewState extends ConsumerState<QRInvitationView> {
           .eq('user_id', user.id)
           .eq('is_active', true)
           .single();
-      
+
       final clinicId = membership['clinic_id'];
 
-      // Generate a code
-      final code = _generateAlphanumericCode();
-      await client.from('invitation_codes').insert({
-        'clinic_id': clinicId,
-        'code': code,
-        'created_by': user.id,
-        'is_used': false,
-      });
+      final invitation = await client.rpc(
+        'create_role_invitation',
+        params: {'p_clinic_id': clinicId, 'p_target_role': _targetRole},
+      );
+      final code = (invitation as Map<String, dynamic>)['code'] as String;
 
       setState(() => _isLoading = false);
 
@@ -52,25 +51,37 @@ class _QRInvitationViewState extends ConsumerState<QRInvitationView> {
         context: context,
         barrierDismissible: false, // Must click close
         builder: (context) => AlertDialog(
-          title: const Text('Código Universal', textAlign: TextAlign.center),
+          title: const Text('Invitación QR', textAlign: TextAlign.center),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text(
-                'Cualquier usuario puede escanear este código.\nSe vinculará a la clínica con el rol que eligió al registrarse.',
+              Text(
+                'Esta invitación asignará únicamente el rol ${_roleLabel(_targetRole)}.',
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 24),
-              Container(
+              SizedBox(
                 width: 200,
                 height: 200,
-                color: Colors.grey.shade200,
-                child: const Center(
-                  child: Icon(Icons.qr_code_2, size: 150, color: AppColors.primaryBlue),
+                child: QrImageView(
+                  data:
+                      'dentalsync://invite?code=${Uri.encodeQueryComponent(code)}',
+                  backgroundColor: Colors.white,
+                  eyeStyle: const QrEyeStyle(
+                    color: AppColors.primaryBlue,
+                    eyeShape: QrEyeShape.square,
+                  ),
+                  dataModuleStyle: const QrDataModuleStyle(
+                    color: AppColors.primaryBlue,
+                    dataModuleShape: QrDataModuleShape.square,
+                  ),
                 ),
               ),
               const SizedBox(height: 24),
-              const Text('Código manual temporal:', style: TextStyle(color: Colors.grey)),
+              const Text(
+                'Código manual temporal:',
+                style: TextStyle(color: Colors.grey),
+              ),
               const SizedBox(height: 8),
               Text(
                 code,
@@ -86,34 +97,29 @@ class _QRInvitationViewState extends ConsumerState<QRInvitationView> {
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Cerrar y Destruir Código'),
+              child: const Text('Cerrar'),
             ),
           ],
         ),
       );
-
-      // On Dialog close, destroy code
-      await client.from('invitation_codes').delete().eq('code', code);
-
     } catch (e) {
       setState(() => _isLoading = false);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Error al generar el código'), backgroundColor: AppColors.error),
+          const SnackBar(
+            content: Text('Error al generar el código'),
+            backgroundColor: AppColors.error,
+          ),
         );
       }
     }
   }
 
-  String _generateAlphanumericCode() {
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-    final random = DateTime.now().millisecondsSinceEpoch;
-    final buffer = StringBuffer();
-    for (var i = 0; i < 8; i++) {
-      buffer.write(chars[(random + i * 7) % chars.length]);
-    }
-    return buffer.toString();
-  }
+  String _roleLabel(String role) => switch (role) {
+    'dentist' => 'Dentista',
+    'secretary' => 'Secretaria',
+    _ => 'Paciente / cliente',
+  };
 
   @override
   Widget build(BuildContext context) {
@@ -122,7 +128,10 @@ class _QRInvitationViewState extends ConsumerState<QRInvitationView> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Generar QR Universal', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+          const Text(
+            'Generar QR Universal',
+            style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+          ),
           const SizedBox(height: 8),
           const Text(
             'Genera un código efímero para que pacientes o miembros del equipo se vinculen a tu clínica.',
@@ -139,7 +148,11 @@ class _QRInvitationViewState extends ConsumerState<QRInvitationView> {
             child: Center(
               child: Column(
                 children: [
-                  const Icon(Icons.qr_code_scanner, size: 80, color: AppColors.primaryBlue),
+                  const Icon(
+                    Icons.qr_code_scanner,
+                    size: 80,
+                    color: AppColors.primaryBlue,
+                  ),
                   const SizedBox(height: 16),
                   const Text(
                     'Código Seguro',
@@ -152,16 +165,51 @@ class _QRInvitationViewState extends ConsumerState<QRInvitationView> {
                     style: TextStyle(color: AppColors.textSecondary),
                   ),
                   const SizedBox(height: 24),
+                  DropdownButtonFormField<String>(
+                    initialValue: _targetRole,
+                    decoration: const InputDecoration(
+                      labelText: 'Rol de la invitación',
+                    ),
+                    items: const [
+                      DropdownMenuItem(
+                        value: 'client',
+                        child: Text('Paciente / cliente'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'dentist',
+                        child: Text('Dentista'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'secretary',
+                        child: Text('Secretaria'),
+                      ),
+                    ],
+                    onChanged: (value) {
+                      if (value != null) setState(() => _targetRole = value);
+                    },
+                  ),
+                  const SizedBox(height: 24),
                   _isLoading
                       ? const CircularProgressIndicator()
                       : ElevatedButton.icon(
                           onPressed: _showTemporalQR,
-                          icon: const Icon(Icons.generating_tokens, color: Colors.white),
-                          label: const Text('Mostrar QR', style: TextStyle(color: Colors.white)),
+                          icon: const Icon(
+                            Icons.generating_tokens,
+                            color: Colors.white,
+                          ),
+                          label: const Text(
+                            'Generar código QR',
+                            style: TextStyle(color: Colors.white),
+                          ),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: AppColors.primaryBlue,
-                            padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 32,
+                              vertical: 16,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
                           ),
                         ),
                 ],

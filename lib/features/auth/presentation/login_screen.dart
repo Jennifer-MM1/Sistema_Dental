@@ -109,7 +109,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     decoration: InputDecoration(
                       labelText: 'Correo electrónico',
                       hintText: 'ejemplo@clinica.com',
-                      prefixIcon: const Icon(Icons.email_outlined, color: AppColors.primaryBlue),
+                      prefixIcon: const Icon(
+                        Icons.email_outlined,
+                        color: AppColors.primaryBlue,
+                      ),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
@@ -119,7 +122,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(color: AppColors.primaryBlue, width: 2),
+                        borderSide: const BorderSide(
+                          color: AppColors.primaryBlue,
+                          width: 2,
+                        ),
                       ),
                       filled: true,
                       fillColor: Colors.grey.shade50,
@@ -145,10 +151,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     decoration: InputDecoration(
                       labelText: 'Contraseña',
                       hintText: '••••••••',
-                      prefixIcon: const Icon(Icons.lock_outline, color: AppColors.primaryBlue),
+                      prefixIcon: const Icon(
+                        Icons.lock_outline,
+                        color: AppColors.primaryBlue,
+                      ),
                       suffixIcon: IconButton(
                         icon: Icon(
-                          _obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                          _obscurePassword
+                              ? Icons.visibility_off_outlined
+                              : Icons.visibility_outlined,
                           color: Colors.grey,
                         ),
                         onPressed: () {
@@ -166,7 +177,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(color: AppColors.primaryBlue, width: 2),
+                        borderSide: const BorderSide(
+                          color: AppColors.primaryBlue,
+                          width: 2,
+                        ),
                       ),
                       filled: true,
                       fillColor: Colors.grey.shade50,
@@ -191,11 +205,17 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       decoration: BoxDecoration(
                         color: AppColors.error.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: AppColors.error.withValues(alpha: 0.3)),
+                        border: Border.all(
+                          color: AppColors.error.withValues(alpha: 0.3),
+                        ),
                       ),
                       child: Row(
                         children: [
-                          const Icon(Icons.error_outline, color: AppColors.error, size: 20),
+                          const Icon(
+                            Icons.error_outline,
+                            color: AppColors.error,
+                            size: 20,
+                          ),
                           const SizedBox(width: 8),
                           Expanded(
                             child: Text(
@@ -270,7 +290,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     onPressed: () => context.go('/register'),
                     child: const Text(
                       'Crear Cuenta',
-                      style: TextStyle(color: AppColors.primaryBlue, fontWeight: FontWeight.bold),
+                      style: TextStyle(
+                        color: AppColors.primaryBlue,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
 
@@ -278,7 +301,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.shield_outlined, size: 16, color: Colors.grey.shade500),
+                      Icon(
+                        Icons.shield_outlined,
+                        size: 16,
+                        color: Colors.grey.shade500,
+                      ),
                       const SizedBox(width: 6),
                       Text(
                         'Conexión protegida con Supabase',

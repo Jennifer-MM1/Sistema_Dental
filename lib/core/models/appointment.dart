@@ -39,10 +39,11 @@ class Appointment {
     if (map['doctor'] != null && map['doctor']['user'] != null) {
       docName = map['doctor']['user']['name'];
     }
-    
+
     String? patName;
     if (map['patient'] != null) {
-      patName = '${map['patient']['first_name']} ${map['patient']['last_name']}';
+      patName =
+          '${map['patient']['first_name']} ${map['patient']['last_name']}';
     }
 
     String? servName;

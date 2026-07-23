@@ -54,7 +54,8 @@ class ClinicalNote {
       diagnosis: map['diagnosis'] as String?,
       treatmentPerformed: map['treatment_performed'] as String?,
       observations: map['observations'] as String?,
-      toothNumbers: (map['tooth_numbers'] as List<dynamic>?)
+      toothNumbers:
+          (map['tooth_numbers'] as List<dynamic>?)
               ?.map((e) => e as int)
               .toList() ??
           [],

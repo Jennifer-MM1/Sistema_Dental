@@ -145,7 +145,8 @@ class ClinicalRepository {
 
   /// Obtiene todas las recetas de un paciente.
   Future<List<Prescription>> getPrescriptionsForPatient(
-      String patientId) async {
+    String patientId,
+  ) async {
     try {
       final response = await _client
           .from('prescriptions')
@@ -198,7 +199,8 @@ class ClinicalRepository {
 
   /// Obtiene la lista de pacientes de una clínica (para búsqueda).
   Future<List<Map<String, dynamic>>> getPatientsInClinic(
-      String clinicId) async {
+    String clinicId,
+  ) async {
     try {
       final response = await _client
           .from('patients')

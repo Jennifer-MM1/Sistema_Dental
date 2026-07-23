@@ -137,8 +137,10 @@ class _OdontogramWidgetState extends State<OdontogramWidget> {
               if (_selected.isNotEmpty) ...[
                 const SizedBox(width: 12),
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 2,
+                  ),
                   decoration: BoxDecoration(
                     color: AppColors.primaryBlue.withAlpha(26),
                     borderRadius: BorderRadius.circular(12),
@@ -237,9 +239,7 @@ class _OdontogramWidgetState extends State<OdontogramWidget> {
               decoration: BoxDecoration(
                 color: AppColors.primaryBlue.withAlpha(13),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: AppColors.primaryBlue.withAlpha(51),
-                ),
+                border: Border.all(color: AppColors.primaryBlue.withAlpha(51)),
               ),
               child: Wrap(
                 spacing: 6,
@@ -259,8 +259,14 @@ class _OdontogramWidgetState extends State<OdontogramWidget> {
                     visualDensity: VisualDensity.compact,
                     deleteIcon: widget.readOnly
                         ? null
-                        : const Icon(Icons.close, size: 14, color: Colors.white),
-                    onDeleted: widget.readOnly ? null : () => _toggleTooth(tooth),
+                        : const Icon(
+                            Icons.close,
+                            size: 14,
+                            color: Colors.white,
+                          ),
+                    onDeleted: widget.readOnly
+                        ? null
+                        : () => _toggleTooth(tooth),
                   );
                 }).toList(),
               ),
@@ -332,8 +338,9 @@ class _OdontogramWidgetState extends State<OdontogramWidget> {
                     '$tooth',
                     style: TextStyle(
                       fontSize: toothSize * 0.28,
-                      fontWeight:
-                          isSelected ? FontWeight.bold : FontWeight.normal,
+                      fontWeight: isSelected
+                          ? FontWeight.bold
+                          : FontWeight.normal,
                       color: isSelected ? Colors.white : Colors.grey.shade600,
                     ),
                   ),

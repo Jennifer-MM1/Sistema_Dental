@@ -5,16 +5,19 @@ class StaffMember {
   final String name;
   final String roleInClinic; // 'owner', 'dentist', 'secretary'
   final String clinicId;
+  final bool isMembershipActive;
   final String? specialty;
   final String? cabinAssigned;
   final bool isAvailable;
-  final String? doctorRecordId; // id en tabla doctors (puede ser null para secretaria)
+  final String?
+  doctorRecordId; // id en tabla doctors (puede ser null para secretaria)
 
   const StaffMember({
     required this.userId,
     required this.name,
     required this.roleInClinic,
     required this.clinicId,
+    this.isMembershipActive = true,
     this.specialty,
     this.cabinAssigned,
     this.isAvailable = true,
@@ -29,6 +32,7 @@ class StaffMember {
       name: profile?['name'] as String? ?? 'Desconocido',
       roleInClinic: map['role_in_clinic'] as String,
       clinicId: map['clinic_id'] as String,
+      isMembershipActive: map['is_active'] as bool? ?? true,
       specialty: doctor?['specialty'] as String?,
       cabinAssigned: doctor?['cabin_assigned'] as String?,
       isAvailable: doctor?['is_available'] as bool? ?? true,
@@ -46,6 +50,7 @@ class StaffMember {
       name: name,
       roleInClinic: roleInClinic,
       clinicId: clinicId,
+      isMembershipActive: isMembershipActive,
       specialty: specialty ?? this.specialty,
       cabinAssigned: cabinAssigned ?? this.cabinAssigned,
       isAvailable: isAvailable ?? this.isAvailable,
@@ -77,7 +82,7 @@ class DoctorDaySchedule {
   final int dayOfWeek; // 0=Dom, 1=Lun, ... 6=Sáb
   bool isWorkingDay;
   String startTime; // formato "HH:MM"
-  String endTime;   // formato "HH:MM"
+  String endTime; // formato "HH:MM"
 
   DoctorDaySchedule({
     this.id,
@@ -109,7 +114,15 @@ class DoctorDaySchedule {
   }
 
   String get dayName {
-    const days = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+    const days = [
+      'Domingo',
+      'Lunes',
+      'Martes',
+      'Miércoles',
+      'Jueves',
+      'Viernes',
+      'Sábado',
+    ];
     return days[dayOfWeek];
   }
 

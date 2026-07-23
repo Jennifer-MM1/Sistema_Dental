@@ -56,8 +56,7 @@ class _ClinicalHistoryViewState extends ConsumerState<ClinicalHistoryView> {
       _clinicId = membership['clinic_id'] as String;
 
       final repo = ref.read(clinicalRepositoryProvider);
-      _doctorRecordId =
-          await repo.getDoctorRecordId(user.id, _clinicId) ?? '';
+      _doctorRecordId = await repo.getDoctorRecordId(user.id, _clinicId) ?? '';
       _patients = await repo.getPatientsInClinic(_clinicId);
       _filteredPatients = List.from(_patients);
     } catch (e) {
@@ -81,8 +80,7 @@ class _ClinicalHistoryViewState extends ConsumerState<ClinicalHistoryView> {
       } else {
         final lower = query.toLowerCase();
         _filteredPatients = _patients.where((p) {
-          final name =
-              '${p['first_name']} ${p['last_name']}'.toLowerCase();
+          final name = '${p['first_name']} ${p['last_name']}'.toLowerCase();
           return name.contains(lower);
         }).toList();
       }
@@ -108,10 +106,7 @@ class _ClinicalHistoryViewState extends ConsumerState<ClinicalHistoryView> {
     if (isWide) {
       return Row(
         children: [
-          SizedBox(
-            width: 320,
-            child: _buildPatientList(),
-          ),
+          SizedBox(width: 320, child: _buildPatientList()),
           const VerticalDivider(width: 1),
           Expanded(child: _buildClinicalContent()),
         ],
@@ -153,10 +148,7 @@ class _ClinicalHistoryViewState extends ConsumerState<ClinicalHistoryView> {
                 const SizedBox(height: 4),
                 Text(
                   '${_patients.length} pacientes registrados',
-                  style: TextStyle(
-                    color: Colors.grey.shade500,
-                    fontSize: 13,
-                  ),
+                  style: TextStyle(color: Colors.grey.shade500, fontSize: 13),
                 ),
                 const SizedBox(height: 12),
                 TextField(
@@ -164,8 +156,10 @@ class _ClinicalHistoryViewState extends ConsumerState<ClinicalHistoryView> {
                   onChanged: _filterPatients,
                   decoration: InputDecoration(
                     hintText: 'Buscar paciente...',
-                    prefixIcon:
-                        const Icon(Icons.search, color: AppColors.primaryBlue),
+                    prefixIcon: const Icon(
+                      Icons.search,
+                      color: AppColors.primaryBlue,
+                    ),
                     filled: true,
                     fillColor: AppColors.background,
                     border: OutlineInputBorder(
@@ -173,7 +167,9 @@ class _ClinicalHistoryViewState extends ConsumerState<ClinicalHistoryView> {
                       borderSide: BorderSide.none,
                     ),
                     contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 12),
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
                   ),
                 ),
               ],
@@ -186,8 +182,11 @@ class _ClinicalHistoryViewState extends ConsumerState<ClinicalHistoryView> {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.person_search,
-                            size: 48, color: Colors.grey.shade300),
+                        Icon(
+                          Icons.person_search,
+                          size: 48,
+                          color: Colors.grey.shade300,
+                        ),
                         const SizedBox(height: 8),
                         Text(
                           'No se encontraron pacientes',
@@ -235,8 +234,7 @@ class _ClinicalHistoryViewState extends ConsumerState<ClinicalHistoryView> {
                               )
                             : null,
                         selected: isSelected,
-                        selectedTileColor:
-                            AppColors.primaryBlue.withAlpha(13),
+                        selectedTileColor: AppColors.primaryBlue.withAlpha(13),
                         onTap: () {
                           setState(() => _selectedPatient = patient);
                           _loadNotesForPatient(patient['id'] as String);
@@ -275,10 +273,7 @@ class _ClinicalHistoryViewState extends ConsumerState<ClinicalHistoryView> {
           Expanded(
             child: Text(
               '${_selectedPatient?['first_name']} ${_selectedPatient?['last_name']}',
-              style: const TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 16,
-              ),
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
             ),
           ),
         ],
@@ -292,8 +287,11 @@ class _ClinicalHistoryViewState extends ConsumerState<ClinicalHistoryView> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.assignment_outlined,
-                size: 64, color: Colors.grey.shade300),
+            Icon(
+              Icons.assignment_outlined,
+              size: 64,
+              color: Colors.grey.shade300,
+            ),
             const SizedBox(height: 16),
             Text(
               'Selecciona un paciente',
@@ -306,10 +304,7 @@ class _ClinicalHistoryViewState extends ConsumerState<ClinicalHistoryView> {
             const SizedBox(height: 4),
             Text(
               'Para ver su historial clínico y crear notas',
-              style: TextStyle(
-                fontSize: 13,
-                color: Colors.grey.shade400,
-              ),
+              style: TextStyle(fontSize: 13, color: Colors.grey.shade400),
             ),
           ],
         ),
@@ -357,41 +352,45 @@ class _ClinicalHistoryViewState extends ConsumerState<ClinicalHistoryView> {
             child: _isLoadingNotes
                 ? const Center(
                     child: CircularProgressIndicator(
-                        color: AppColors.primaryBlue),
+                      color: AppColors.primaryBlue,
+                    ),
                   )
                 : _notes.isEmpty
-                    ? Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.note_alt_outlined,
-                                size: 48, color: Colors.grey.shade300),
-                            const SizedBox(height: 8),
-                            Text(
-                              'Sin notas clínicas',
-                              style: TextStyle(
-                                fontSize: 16,
-                                color: Colors.grey.shade400,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              'Crea la primera nota con el botón de arriba',
-                              style: TextStyle(
-                                fontSize: 13,
-                                color: Colors.grey.shade400,
-                              ),
-                            ),
-                          ],
+                ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.note_alt_outlined,
+                          size: 48,
+                          color: Colors.grey.shade300,
                         ),
-                      )
-                    : ListView.builder(
-                        padding: const EdgeInsets.all(16),
-                        itemCount: _notes.length,
-                        itemBuilder: (context, index) {
-                          return _buildNoteCard(_notes[index]);
-                        },
-                      ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Sin notas clínicas',
+                          style: TextStyle(
+                            fontSize: 16,
+                            color: Colors.grey.shade400,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Crea la primera nota con el botón de arriba',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: Colors.grey.shade400,
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                : ListView.builder(
+                    padding: const EdgeInsets.all(16),
+                    itemCount: _notes.length,
+                    itemBuilder: (context, index) {
+                      return _buildNoteCard(_notes[index]);
+                    },
+                  ),
           ),
         ],
       ),
@@ -419,8 +418,10 @@ class _ClinicalHistoryViewState extends ConsumerState<ClinicalHistoryView> {
             Row(
               children: [
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
                     color: AppColors.primaryBlue.withAlpha(26),
                     borderRadius: BorderRadius.circular(8),
@@ -428,8 +429,11 @@ class _ClinicalHistoryViewState extends ConsumerState<ClinicalHistoryView> {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.calendar_today,
-                          size: 14, color: AppColors.primaryBlue),
+                      const Icon(
+                        Icons.calendar_today,
+                        size: 14,
+                        color: AppColors.primaryBlue,
+                      ),
                       const SizedBox(width: 4),
                       Text(
                         dateStr,
@@ -470,14 +474,15 @@ class _ClinicalHistoryViewState extends ConsumerState<ClinicalHistoryView> {
                 note.treatmentPerformed!.isNotEmpty) ...[
               _buildSectionTitle('Tratamiento Realizado'),
               const SizedBox(height: 4),
-              Text(note.treatmentPerformed!,
-                  style: const TextStyle(fontSize: 14)),
+              Text(
+                note.treatmentPerformed!,
+                style: const TextStyle(fontSize: 14),
+              ),
               const SizedBox(height: 12),
             ],
 
             // Observaciones
-            if (note.observations != null &&
-                note.observations!.isNotEmpty) ...[
+            if (note.observations != null && note.observations!.isNotEmpty) ...[
               _buildSectionTitle('Observaciones'),
               const SizedBox(height: 4),
               Text(note.observations!, style: const TextStyle(fontSize: 14)),
@@ -541,8 +546,10 @@ class _ClinicalHistoryViewState extends ConsumerState<ClinicalHistoryView> {
                       // Título
                       Row(
                         children: [
-                          const Icon(Icons.note_add,
-                              color: AppColors.primaryBlue),
+                          const Icon(
+                            Icons.note_add,
+                            color: AppColors.primaryBlue,
+                          ),
                           const SizedBox(width: 8),
                           const Expanded(
                             child: Text(
@@ -567,8 +574,7 @@ class _ClinicalHistoryViewState extends ConsumerState<ClinicalHistoryView> {
                         maxLines: 3,
                         decoration: InputDecoration(
                           labelText: 'Diagnóstico',
-                          hintText:
-                              'Ej: Caries profunda en pieza 36...',
+                          hintText: 'Ej: Caries profunda en pieza 36...',
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12),
                           ),
@@ -582,8 +588,7 @@ class _ClinicalHistoryViewState extends ConsumerState<ClinicalHistoryView> {
                         maxLines: 3,
                         decoration: InputDecoration(
                           labelText: 'Tratamiento Realizado',
-                          hintText:
-                              'Ej: Obturación con resina compuesta...',
+                          hintText: 'Ej: Obturación con resina compuesta...',
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12),
                           ),
@@ -620,8 +625,7 @@ class _ClinicalHistoryViewState extends ConsumerState<ClinicalHistoryView> {
                         mainAxisAlignment: MainAxisAlignment.end,
                         children: [
                           TextButton(
-                            onPressed: () =>
-                                Navigator.pop(context, false),
+                            onPressed: () => Navigator.pop(context, false),
                             child: const Text('Cancelar'),
                           ),
                           const SizedBox(width: 12),
@@ -640,20 +644,16 @@ class _ClinicalHistoryViewState extends ConsumerState<ClinicalHistoryView> {
                               }
 
                               final note = ClinicalNote(
-                                patientId:
-                                    _selectedPatient!['id'] as String,
+                                patientId: _selectedPatient!['id'] as String,
                                 doctorId: _doctorRecordId,
                                 clinicId: _clinicId,
                                 diagnosis: diagnosisCtrl.text.trim(),
-                                treatmentPerformed:
-                                    treatmentCtrl.text.trim(),
-                                observations:
-                                    observationsCtrl.text.trim(),
+                                treatmentPerformed: treatmentCtrl.text.trim(),
+                                observations: observationsCtrl.text.trim(),
                                 toothNumbers: selectedTeeth,
                               );
 
-                              final repo =
-                                  ref.read(clinicalRepositoryProvider);
+                              final repo = ref.read(clinicalRepositoryProvider);
                               final saved = await repo.saveNote(note);
                               if (saved != null && context.mounted) {
                                 Navigator.pop(context, true);
@@ -666,7 +666,9 @@ class _ClinicalHistoryViewState extends ConsumerState<ClinicalHistoryView> {
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               padding: const EdgeInsets.symmetric(
-                                  horizontal: 24, vertical: 12),
+                                horizontal: 24,
+                                vertical: 12,
+                              ),
                             ),
                             icon: const Icon(Icons.save, size: 18),
                             label: const Text('Guardar Nota'),
@@ -730,8 +732,7 @@ class _ClinicalHistoryViewState extends ConsumerState<ClinicalHistoryView> {
                 children: [
                   Row(
                     children: [
-                      const Icon(Icons.description,
-                          color: AppColors.success),
+                      const Icon(Icons.description, color: AppColors.success),
                       const SizedBox(width: 8),
                       const Expanded(
                         child: Text(
@@ -856,8 +857,10 @@ class _ClinicalHistoryViewState extends ConsumerState<ClinicalHistoryView> {
                     children: [
                       Row(
                         children: [
-                          const Icon(Icons.medication_outlined,
-                              color: AppColors.primaryBlue),
+                          const Icon(
+                            Icons.medication_outlined,
+                            color: AppColors.primaryBlue,
+                          ),
                           const SizedBox(width: 8),
                           const Expanded(
                             child: Text(
@@ -870,8 +873,7 @@ class _ClinicalHistoryViewState extends ConsumerState<ClinicalHistoryView> {
                           ),
                           IconButton(
                             icon: const Icon(Icons.close),
-                            onPressed: () =>
-                                Navigator.pop(context, false),
+                            onPressed: () => Navigator.pop(context, false),
                           ),
                         ],
                       ),
@@ -916,8 +918,7 @@ class _ClinicalHistoryViewState extends ConsumerState<ClinicalHistoryView> {
                                       labelText: 'Dosis',
                                       hintText: 'Ej: 1 cápsula',
                                       border: OutlineInputBorder(
-                                        borderRadius:
-                                            BorderRadius.circular(10),
+                                        borderRadius: BorderRadius.circular(10),
                                       ),
                                       isDense: true,
                                     ),
@@ -931,8 +932,7 @@ class _ClinicalHistoryViewState extends ConsumerState<ClinicalHistoryView> {
                                       labelText: 'Frecuencia',
                                       hintText: 'Ej: Cada 8 hrs',
                                       border: OutlineInputBorder(
-                                        borderRadius:
-                                            BorderRadius.circular(10),
+                                        borderRadius: BorderRadius.circular(10),
                                       ),
                                       isDense: true,
                                     ),
@@ -950,8 +950,7 @@ class _ClinicalHistoryViewState extends ConsumerState<ClinicalHistoryView> {
                                       labelText: 'Duración',
                                       hintText: 'Ej: 7 días',
                                       border: OutlineInputBorder(
-                                        borderRadius:
-                                            BorderRadius.circular(10),
+                                        borderRadius: BorderRadius.circular(10),
                                       ),
                                       isDense: true,
                                     ),
@@ -962,14 +961,14 @@ class _ClinicalHistoryViewState extends ConsumerState<ClinicalHistoryView> {
                                   onPressed: () {
                                     if (nameCtrl.text.trim().isEmpty) return;
                                     setDialogState(() {
-                                      medications.add(PrescriptionItem(
-                                        name: nameCtrl.text.trim(),
-                                        dosage: dosageCtrl.text.trim(),
-                                        frequency:
-                                            frequencyCtrl.text.trim(),
-                                        duration:
-                                            durationCtrl.text.trim(),
-                                      ));
+                                      medications.add(
+                                        PrescriptionItem(
+                                          name: nameCtrl.text.trim(),
+                                          dosage: dosageCtrl.text.trim(),
+                                          frequency: frequencyCtrl.text.trim(),
+                                          duration: durationCtrl.text.trim(),
+                                        ),
+                                      );
                                       nameCtrl.clear();
                                       dosageCtrl.clear();
                                       frequencyCtrl.clear();
@@ -980,8 +979,7 @@ class _ClinicalHistoryViewState extends ConsumerState<ClinicalHistoryView> {
                                     backgroundColor: AppColors.success,
                                     foregroundColor: Colors.white,
                                     shape: RoundedRectangleBorder(
-                                      borderRadius:
-                                          BorderRadius.circular(10),
+                                      borderRadius: BorderRadius.circular(10),
                                     ),
                                   ),
                                   child: const Text('Agregar'),
@@ -1004,8 +1002,7 @@ class _ClinicalHistoryViewState extends ConsumerState<ClinicalHistoryView> {
                             decoration: BoxDecoration(
                               color: Colors.white,
                               borderRadius: BorderRadius.circular(12),
-                              border:
-                                  Border.all(color: Colors.grey.shade200),
+                              border: Border.all(color: Colors.grey.shade200),
                             ),
                             child: Row(
                               children: [
@@ -1017,7 +1014,8 @@ class _ClinicalHistoryViewState extends ConsumerState<ClinicalHistoryView> {
                                       Text(
                                         med.name,
                                         style: const TextStyle(
-                                            fontWeight: FontWeight.bold),
+                                          fontWeight: FontWeight.bold,
+                                        ),
                                       ),
                                       Text(
                                         '${med.dosage} | ${med.frequency} | ${med.duration}',
@@ -1030,8 +1028,11 @@ class _ClinicalHistoryViewState extends ConsumerState<ClinicalHistoryView> {
                                   ),
                                 ),
                                 IconButton(
-                                  icon: const Icon(Icons.delete_outline,
-                                      color: AppColors.error, size: 20),
+                                  icon: const Icon(
+                                    Icons.delete_outline,
+                                    color: AppColors.error,
+                                    size: 20,
+                                  ),
                                   onPressed: () {
                                     setDialogState(() {
                                       medications.removeAt(i);
@@ -1049,8 +1050,7 @@ class _ClinicalHistoryViewState extends ConsumerState<ClinicalHistoryView> {
                         maxLines: 2,
                         decoration: InputDecoration(
                           labelText: 'Indicaciones Generales (opcional)',
-                          hintText:
-                              'Ej: Tomar después de los alimentos...',
+                          hintText: 'Ej: Tomar después de los alimentos...',
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12),
                           ),
@@ -1061,8 +1061,7 @@ class _ClinicalHistoryViewState extends ConsumerState<ClinicalHistoryView> {
                         mainAxisAlignment: MainAxisAlignment.end,
                         children: [
                           TextButton(
-                            onPressed: () =>
-                                Navigator.pop(context, false),
+                            onPressed: () => Navigator.pop(context, false),
                             child: const Text('Cancelar'),
                           ),
                           const SizedBox(width: 12),
@@ -1076,15 +1075,16 @@ class _ClinicalHistoryViewState extends ConsumerState<ClinicalHistoryView> {
                                       doctorId: note.doctorId,
                                       clinicId: note.clinicId,
                                       medications: medications,
-                                      instructions:
-                                          instructionsCtrl.text.trim(),
+                                      instructions: instructionsCtrl.text
+                                          .trim(),
                                     );
                                     final repo = ref.read(
-                                        clinicalRepositoryProvider);
-                                    final result = await repo
-                                        .savePrescription(prescription);
-                                    if (result != null &&
-                                        context.mounted) {
+                                      clinicalRepositoryProvider,
+                                    );
+                                    final result = await repo.savePrescription(
+                                      prescription,
+                                    );
+                                    if (result != null && context.mounted) {
                                       Navigator.pop(context, true);
                                     }
                                   },
@@ -1095,7 +1095,9 @@ class _ClinicalHistoryViewState extends ConsumerState<ClinicalHistoryView> {
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               padding: const EdgeInsets.symmetric(
-                                  horizontal: 24, vertical: 12),
+                                horizontal: 24,
+                                vertical: 12,
+                              ),
                             ),
                             icon: const Icon(Icons.save, size: 18),
                             label: const Text('Guardar Receta'),
@@ -1112,13 +1114,12 @@ class _ClinicalHistoryViewState extends ConsumerState<ClinicalHistoryView> {
       },
     );
 
-    if (saved == true) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Receta guardada exitosamente.'),
-          backgroundColor: AppColors.success,
-        ),
-      );
-    }
+    if (saved != true || !mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Receta guardada exitosamente.'),
+        backgroundColor: AppColors.success,
+      ),
+    );
   }
 }

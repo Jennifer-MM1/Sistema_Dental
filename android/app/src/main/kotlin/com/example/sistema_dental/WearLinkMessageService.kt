@@ -3,6 +3,7 @@ package com.example.sistema_dental
 import android.content.Context
 import com.google.android.gms.wearable.MessageEvent
 import com.google.android.gms.wearable.WearableListenerService
+import org.json.JSONArray
 import org.json.JSONObject
 import java.time.Instant
 
@@ -35,6 +36,18 @@ class WearLinkMessageService : WearableListenerService() {
                     .remove(currentStateKey)
                     .apply()
             }
+            actionPath -> {
+                val pending = try {
+                    JSONArray(prefs.getString(actionsKey, "[]"))
+                } catch (_: Exception) {
+                    JSONArray()
+                }
+                pending.put(JSONObject(payload))
+                while (pending.length() > 20) {
+                    pending.remove(0)
+                }
+                prefs.edit().putString(actionsKey, pending.toString()).apply()
+            }
         }
     }
 
@@ -50,6 +63,7 @@ class WearLinkMessageService : WearableListenerService() {
     companion object {
         const val sessionPath = "/dental_sync/session"
         const val logoutPath = "/dental_sync/logout"
+        const val actionPath = "/dental_sync/action"
         const val sessionDataPath = "/dental_sync/session_data"
         const val logoutDataPath = "/dental_sync/logout_data"
         const val payloadKey = "payload"
@@ -58,6 +72,8 @@ class WearLinkMessageService : WearableListenerService() {
         const val sessionKey = "pending_session"
         const val currentStateKey = "current_state"
         const val logoutKey = "pending_logout"
+        const val actionsKey = "pending_actions"
+        const val phoneLinkedKey = "phone_session_linked"
         const val lastSessionAtKey = "last_session_at"
         const val lastLogoutAtKey = "last_logout_at"
     }

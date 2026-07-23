@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:sistema_dental/core/wear/wear_link_service.dart';
 import 'package:sistema_dental/features/wear/data/wear_data_service.dart';
 import 'package:sistema_dental/features/wear/presentation/wear_alert_screen.dart';
 import 'package:sistema_dental/features/wear/presentation/wear_shell.dart';
@@ -8,11 +9,13 @@ class WearDoctorScreen extends StatefulWidget {
 
   final WearDoctorQueueData data;
   final bool isDemo;
+  final bool secretaryMode;
 
   const WearDoctorScreen({
     super.key,
     this.data = WearDoctorQueueData.demo,
     this.isDemo = true,
+    this.secretaryMode = false,
   });
 
   @override
@@ -23,19 +26,35 @@ class _WearDoctorScreenState extends State<WearDoctorScreen> {
   late int _queueAhead;
   late String _status;
   bool _saving = false;
+  late String _currentStatus;
 
   @override
   void initState() {
     super.initState();
     _queueAhead = widget.data.queueCount;
     _status = widget.data.statusLabel;
+    _currentStatus = widget.data.status;
+  }
+
+  @override
+  void didUpdateWidget(covariant WearDoctorScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.data.appointmentId != widget.data.appointmentId ||
+        oldWidget.data.status != widget.data.status ||
+        oldWidget.data.queueCount != widget.data.queueCount) {
+      _queueAhead = widget.data.queueCount;
+      _status = widget.data.statusLabel;
+      _currentStatus = widget.data.status;
+    }
   }
 
   Future<void> _callNext() async {
-    await _updateStatus('in_treatment');
+    final success = await _sendAction('call_patient');
+    if (!success || !mounted) return;
     setState(() {
       _queueAhead = (_queueAhead - 1).clamp(0, 99);
       _status = 'Turno llamado';
+      _currentStatus = 'in_treatment';
     });
     if (!mounted) return;
     Navigator.push(
@@ -48,18 +67,37 @@ class _WearDoctorScreenState extends State<WearDoctorScreen> {
   }
 
   Future<void> _complete() async {
-    await _updateStatus('completed');
-    if (!mounted) return;
+    final success = await _sendAction('complete');
+    if (!success || !mounted) return;
     setState(() {
       _status = 'Atendido';
+      _currentStatus = 'completed';
     });
   }
 
-  Future<void> _updateStatus(String status) async {
-    if (widget.data.appointmentId.isEmpty) return;
+  Future<void> _checkIn() async {
+    final success = await _sendAction('check_in');
+    if (!success || !mounted) return;
+    setState(() {
+      _status = 'En sala';
+      _currentStatus = 'in_lobby';
+    });
+  }
+
+  Future<bool> _sendAction(String action) async {
+    if (widget.data.appointmentId.isEmpty) return false;
     setState(() => _saving = true);
     try {
-      await Future<void>.delayed(const Duration(milliseconds: 250));
+      final sent = await WearLinkService.instance.sendActionToPhone(
+        appointmentId: widget.data.appointmentId,
+        action: action,
+      );
+      if (!sent && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Abre DentalSync en el teléfono.')),
+        );
+      }
+      return sent;
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -94,7 +132,9 @@ class _WearDoctorScreenState extends State<WearDoctorScreen> {
                   children: [
                     const WearTopBar(),
                     SizedBox(height: compact ? 3 : 5),
-                    const WearTitle('Modo dentista'),
+                    WearTitle(
+                      widget.secretaryMode ? 'Modo recepción' : 'Modo dentista',
+                    ),
                     SizedBox(height: compact ? 8 : 12),
                     Container(
                       width: designWidth,
@@ -187,19 +227,34 @@ class _WearDoctorScreenState extends State<WearDoctorScreen> {
                       children: [
                         Expanded(
                           child: _ActionButton(
-                            label: 'Llamar',
+                            label:
+                                widget.secretaryMode &&
+                                    _currentStatus == 'upcoming'
+                                ? 'Llegó'
+                                : 'Llamar',
                             color: const Color(0xFF087956),
-                            onTap: _saving ? null : _callNext,
+                            onTap: _saving
+                                ? null
+                                : widget.secretaryMode &&
+                                      _currentStatus == 'upcoming'
+                                ? _checkIn
+                                : _currentStatus == 'in_lobby'
+                                ? _callNext
+                                : null,
                           ),
                         ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: _ActionButton(
-                            label: 'OK',
-                            color: const Color(0xFF006D9F),
-                            onTap: _saving ? null : _complete,
+                        if (!widget.secretaryMode) ...[
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: _ActionButton(
+                              label: 'Finalizar',
+                              color: const Color(0xFF006D9F),
+                              onTap: _saving || _currentStatus != 'in_treatment'
+                                  ? null
+                                  : _complete,
+                            ),
                           ),
-                        ),
+                        ],
                       ],
                     ),
                   ],

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:sistema_dental/core/wear/wear_link_service.dart';
 import 'package:sistema_dental/features/wear/data/wear_data_service.dart';
@@ -17,13 +19,36 @@ class _WearBootstrapResult {
   const _WearBootstrapResult(this.state, [this.data, this.summary]);
 }
 
-class WearBootstrapScreen extends StatelessWidget {
+class WearBootstrapScreen extends StatefulWidget {
   const WearBootstrapScreen({super.key});
+
+  @override
+  State<WearBootstrapScreen> createState() => _WearBootstrapScreenState();
+}
+
+class _WearBootstrapScreenState extends State<WearBootstrapScreen> {
+  late Future<_WearBootstrapResult> _data;
+  Timer? _refreshTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _data = _loadData();
+    _refreshTimer = Timer.periodic(const Duration(seconds: 20), (_) {
+      if (mounted) setState(() => _data = _loadData());
+    });
+  }
+
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<_WearBootstrapResult>(
-      future: _loadData(),
+      future: _data,
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done) {
           return const WearShell(
@@ -47,6 +72,13 @@ class WearBootstrapScreen extends StatelessWidget {
         if (data.role == WearRole.dentist) {
           return WearDoctorScreen(data: data.doctor!, isDemo: false);
         }
+        if (data.role == WearRole.secretary) {
+          return WearDoctorScreen(
+            data: data.secretary!,
+            isDemo: false,
+            secretaryMode: true,
+          );
+        }
 
         return WearWaitScreen(data: data.patient!, isDemo: false);
       },
@@ -62,6 +94,14 @@ class WearBootstrapScreen extends StatelessWidget {
 
       if (data.role == WearRole.dentist) {
         if (data.doctor == null) {
+          return _WearBootstrapResult(
+            _WearBootstrapState.linkedWithoutActiveTurn,
+            null,
+            data.summary,
+          );
+        }
+      } else if (data.role == WearRole.secretary) {
+        if (data.secretary == null) {
           return _WearBootstrapResult(
             _WearBootstrapState.linkedWithoutActiveTurn,
             null,

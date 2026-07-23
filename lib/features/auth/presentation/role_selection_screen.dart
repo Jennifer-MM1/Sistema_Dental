@@ -8,7 +8,8 @@ class RoleSelectionScreen extends ConsumerStatefulWidget {
   const RoleSelectionScreen({super.key});
 
   @override
-  ConsumerState<RoleSelectionScreen> createState() => _RoleSelectionScreenState();
+  ConsumerState<RoleSelectionScreen> createState() =>
+      _RoleSelectionScreenState();
 }
 
 class _RoleSelectionScreenState extends ConsumerState<RoleSelectionScreen> {
@@ -16,10 +17,10 @@ class _RoleSelectionScreenState extends ConsumerState<RoleSelectionScreen> {
 
   Future<void> _handleRoleSelection(String role) async {
     setState(() => _isLoading = true);
-    
+
     final client = ref.read(supabaseClientProvider);
     final user = client.auth.currentUser;
-    
+
     if (user == null) {
       context.go('/login');
       return;
@@ -30,7 +31,7 @@ class _RoleSelectionScreenState extends ConsumerState<RoleSelectionScreen> {
       // For dentists, they could be 'super_admin' or 'admin_dentist'
       // But 'Dentista Titular' means 'super_admin' or owner.
       // We will check for memberships.
-      
+
       List<String> validRoles = [];
       if (role == 'dentist') {
         validRoles = ['owner', 'dentist']; // Dueño o dentista ayudante
@@ -54,21 +55,33 @@ class _RoleSelectionScreenState extends ConsumerState<RoleSelectionScreen> {
         if (role == 'dentist') {
           try {
             // Update profile role
-            await client.from('profiles').update({'role': 'dentist'}).eq('id', user.id);
+            await client
+                .from('profiles')
+                .update({'role': 'dentist'})
+                .eq('id', user.id);
             // Create a clinic
-            final clinicRes = await client.from('clinics').insert({'business_name': 'Clínica de ${user.userMetadata?['name'] ?? 'Doctor'}'}).select().single();
+            final clinicRes = await client
+                .from('clinics')
+                .insert({
+                  'business_name':
+                      'Clínica de ${user.userMetadata?['name'] ?? 'Doctor'}',
+                })
+                .select()
+                .single();
             // Create membership
             await client.from('clinic_memberships').insert({
               'clinic_id': clinicRes['id'],
               'user_id': user.id,
-              'role_in_clinic': 'owner'
+              'role_in_clinic': 'owner',
             });
             if (mounted) context.go('/dentist');
           } catch (e) {
             debugPrint('Error creating clinic: $e');
             if (mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Error al crear clínica. Falta permiso SQL.')),
+                const SnackBar(
+                  content: Text('Error al crear clínica. Falta permiso SQL.'),
+                ),
               );
             }
           }
@@ -82,18 +95,23 @@ class _RoleSelectionScreenState extends ConsumerState<RoleSelectionScreen> {
         _routeToDashboard(memberships.first['role_in_clinic'] as String);
       } else {
         // Multiple clinics: Show a selector dialog
-        await _showClinicSelectorDialog(List<Map<String, dynamic>>.from(memberships));
+        await _showClinicSelectorDialog(
+          List<Map<String, dynamic>>.from(memberships),
+        );
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Error al cargar perfiles')),
-      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Error al cargar perfiles')));
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  Future<void> _showClinicSelectorDialog(List<Map<String, dynamic>> memberships) async {
+  Future<void> _showClinicSelectorDialog(
+    List<Map<String, dynamic>> memberships,
+  ) async {
     await showDialog(
       context: context,
       builder: (context) {
@@ -106,11 +124,16 @@ class _RoleSelectionScreenState extends ConsumerState<RoleSelectionScreen> {
               itemCount: memberships.length,
               itemBuilder: (context, index) {
                 final membership = memberships[index];
-                final clinicName = membership['clinics'] != null ? membership['clinics']['business_name'] : 'Clínica Desconocida';
+                final clinicName = membership['clinics'] != null
+                    ? membership['clinics']['business_name']
+                    : 'Clínica Desconocida';
                 final roleInClinic = membership['role_in_clinic'] as String;
 
                 return ListTile(
-                  leading: const Icon(Icons.local_hospital, color: AppColors.primaryBlue),
+                  leading: const Icon(
+                    Icons.local_hospital,
+                    color: AppColors.primaryBlue,
+                  ),
                   title: Text(clinicName),
                   subtitle: Text('Rol: $roleInClinic'),
                   onTap: () {
@@ -158,7 +181,7 @@ class _RoleSelectionScreenState extends ConsumerState<RoleSelectionScreen> {
               await ref.read(supabaseClientProvider).auth.signOut();
               if (context.mounted) context.go('/login');
             },
-          )
+          ),
         ],
       ),
       body: SafeArea(
@@ -169,16 +192,27 @@ class _RoleSelectionScreenState extends ConsumerState<RoleSelectionScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    const Icon(Icons.account_circle, size: 80, color: AppColors.primaryBlue),
+                    const Icon(
+                      Icons.account_circle,
+                      size: 80,
+                      color: AppColors.primaryBlue,
+                    ),
                     const SizedBox(height: 24),
                     const Text(
                       '¿Cómo deseas ingresar hoy?',
-                      style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+                      style: TextStyle(
+                        fontSize: 28,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.textPrimary,
+                      ),
                     ),
                     const SizedBox(height: 8),
                     const Text(
                       'Selecciona tu modo de uso. Podrás cambiarlo más tarde.',
-                      style: TextStyle(fontSize: 16, color: AppColors.textSecondary),
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: AppColors.textSecondary,
+                      ),
                     ),
                     const SizedBox(height: 48),
                     Wrap(
@@ -188,7 +222,8 @@ class _RoleSelectionScreenState extends ConsumerState<RoleSelectionScreen> {
                       children: [
                         _buildModeCard(
                           title: 'Dentista',
-                          subtitle: 'Administra tu clínica o ayuda a otro colega',
+                          subtitle:
+                              'Administra tu clínica o ayuda a otro colega',
                           icon: Icons.health_and_safety,
                           color: AppColors.primaryBlue,
                           onTap: () => _handleRoleSelection('dentist'),
@@ -233,7 +268,11 @@ class _RoleSelectionScreenState extends ConsumerState<RoleSelectionScreen> {
           color: Colors.white,
           borderRadius: BorderRadius.circular(20),
           boxShadow: [
-            BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 20, offset: const Offset(0, 10)),
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.05),
+              blurRadius: 20,
+              offset: const Offset(0, 10),
+            ),
           ],
           border: Border.all(color: Colors.grey.shade100),
         ),
@@ -250,13 +289,20 @@ class _RoleSelectionScreenState extends ConsumerState<RoleSelectionScreen> {
             const SizedBox(height: 24),
             Text(
               title,
-              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+              style: const TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
+                color: AppColors.textPrimary,
+              ),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 12),
             Text(
               subtitle,
-              style: const TextStyle(fontSize: 14, color: AppColors.textSecondary),
+              style: const TextStyle(
+                fontSize: 14,
+                color: AppColors.textSecondary,
+              ),
               textAlign: TextAlign.center,
             ),
           ],

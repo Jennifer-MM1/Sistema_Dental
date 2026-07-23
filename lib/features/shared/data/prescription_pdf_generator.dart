@@ -149,10 +149,7 @@ class PrescriptionPdfGenerator {
               if (note.toothNumbers.isNotEmpty) ...[
                 _pdfSectionHeader('Dientes Involucrados (FDI)'),
                 pw.SizedBox(height: 6),
-                pw.Text(
-                  note.toothNumbers.join(', '),
-                  style: _pdfBody(),
-                ),
+                pw.Text(note.toothNumbers.join(', '), style: _pdfBody()),
                 pw.SizedBox(height: 16),
               ],
 
@@ -209,12 +206,9 @@ class PrescriptionPdfGenerator {
                   decoration: pw.BoxDecoration(
                     color: PdfColor.fromHex('#FFFBEB'),
                     borderRadius: pw.BorderRadius.circular(8),
-                    border: pw.Border.all(
-                      color: PdfColor.fromHex('#FDE68A'),
-                    ),
+                    border: pw.Border.all(color: PdfColor.fromHex('#FDE68A')),
                   ),
-                  child:
-                      pw.Text(prescription.instructions!, style: _pdfBody()),
+                  child: pw.Text(prescription.instructions!, style: _pdfBody()),
                 ),
               ],
 
@@ -301,10 +295,7 @@ class PrescriptionPdfGenerator {
   static pw.Widget _pdfLabel(String text) {
     return pw.Text(
       text,
-      style: pw.TextStyle(
-        fontSize: 9,
-        color: PdfColor.fromHex('#64748B'),
-      ),
+      style: pw.TextStyle(fontSize: 9, color: PdfColor.fromHex('#64748B')),
     );
   }
 

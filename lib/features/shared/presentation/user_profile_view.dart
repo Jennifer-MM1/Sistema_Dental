@@ -8,6 +8,10 @@ import 'package:sistema_dental/features/auth/providers/auth_providers.dart';
 import 'package:sistema_dental/features/client/data/notification_repository.dart';
 import 'package:sistema_dental/features/shared/data/settings_repository.dart';
 
+final wearCompanionLinkedProvider = FutureProvider<bool>((ref) async {
+  return WearLinkService.instance.isCurrentSessionLinked();
+});
+
 class UserProfileView extends ConsumerWidget {
   final String roleLabel;
   final IconData avatarIcon;
@@ -206,25 +210,16 @@ class UserProfileView extends ConsumerWidget {
                 icon: const Icon(Icons.watch_rounded, color: Colors.white),
                 label: const Text('Vincular automáticamente'),
                 onPressed: () async {
-                  final authUser = ref
-                      .read(authRepositoryProvider)
-                      .currentAuthUser;
                   final link = await WearLinkService.instance
                       .linkCurrentSession(role: roleLabel);
 
-                  if (link.success && authUser != null) {
+                  if (link.success) {
                     final repo = ref.read(notificationRepositoryProvider);
-                    await repo.registerDevice(
-                      deviceType: 'wear_os',
-                      pushToken: 'wear_os_companion_${authUser.id}',
-                    );
+                    await repo.deactivateSmartwatchDevices();
                     ref
                         .read(smartwatchLinkedOverrideProvider.notifier)
                         .markLinked();
-                    await ref
-                        .refresh(linkedDevicesProvider.future)
-                        .then((_) {});
-                    ref.read(smartwatchLinkedOverrideProvider.notifier).clear();
+                    ref.invalidate(wearCompanionLinkedProvider);
                   }
 
                   if (context.mounted) {
@@ -239,35 +234,6 @@ class UserProfileView extends ConsumerWidget {
                         backgroundColor: link.success
                             ? AppColors.success
                             : AppColors.error,
-                      ),
-                    );
-                  }
-                },
-              ),
-              const SizedBox(height: 8),
-              TextButton.icon(
-                icon: const Icon(
-                  Icons.notifications_active_outlined,
-                  color: AppColors.primaryBlue,
-                ),
-                label: const Text('Registrar solo notificaciones'),
-                onPressed: () async {
-                  final authUser = ref
-                      .read(authRepositoryProvider)
-                      .currentAuthUser;
-                  final repo = ref.read(notificationRepositoryProvider);
-                  await repo.registerDevice(
-                    deviceType: 'wear_os',
-                    pushToken: 'wear_os_notifications_${authUser?.id ?? ""}',
-                  );
-                  await ref.refresh(linkedDevicesProvider.future).then((_) {});
-                  ref.read(smartwatchLinkedOverrideProvider.notifier).clear();
-                  if (context.mounted) {
-                    Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Notificaciones Wear OS activadas.'),
-                        backgroundColor: AppColors.success,
                       ),
                     );
                   }
@@ -288,7 +254,7 @@ class UserProfileView extends ConsumerWidget {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Desvincular Smartwatch'),
+        title: const Text('Desvincular reloj inteligente'),
         content: const Text(
           '¿Deseas desvincular los relojes inteligentes de esta cuenta?',
         ),
@@ -306,13 +272,8 @@ class UserProfileView extends ConsumerWidget {
               final success = await repo.deactivateSmartwatchDevices();
               final unlinkNotice = await WearLinkService.instance
                   .unlinkCurrentSession();
-              final stillLinked = await repo.hasActiveSmartwatchDevice();
               await ref.refresh(linkedDevicesProvider.future).then((_) {});
-              stillLinked
-                  ? ref.read(smartwatchLinkedOverrideProvider.notifier).clear()
-                  : ref
-                        .read(smartwatchLinkedOverrideProvider.notifier)
-                        .markUnlinked();
+              ref.invalidate(wearCompanionLinkedProvider);
               if (context.mounted) {
                 Navigator.pop(context);
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -320,9 +281,9 @@ class UserProfileView extends ConsumerWidget {
                     content: Text(
                       success
                           ? unlinkNotice.success
-                                ? 'Smartwatch desvinculado. Actualiza el reloj.'
-                                : 'Smartwatch desvinculado en la app. Actualiza o reinicia el reloj si sigue conectado.'
-                          : 'No se pudo desvincular el smartwatch.',
+                                ? 'Reloj inteligente desvinculado. Actualiza el reloj.'
+                                : 'Reloj inteligente desvinculado en la aplicación. Actualiza o reinicia el reloj si sigue conectado.'
+                          : 'No se pudo desvincular el reloj inteligente.',
                     ),
                     backgroundColor: success ? null : AppColors.error,
                   ),
@@ -340,6 +301,7 @@ class UserProfileView extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final userAsync = ref.watch(currentUserProvider);
     final devicesAsync = ref.watch(linkedDevicesProvider);
+    final companionLinkedAsync = ref.watch(wearCompanionLinkedProvider);
     final mobileNotificationsAsync = ref.watch(
       currentDeviceNotificationsProvider,
     );
@@ -356,7 +318,9 @@ class UserProfileView extends ConsumerWidget {
           device['device_type'] == 'watch_os' ||
           device['device_type'] == 'wear_os',
     );
-    final isWatchLinked = smartwatchOverride ?? watchDevices.isNotEmpty;
+    final isWatchLinked =
+        smartwatchOverride ??
+        ((companionLinkedAsync.value ?? false) || watchDevices.isNotEmpty);
     final areMobileNotificationsOn =
         mobileNotificationsOverride ??
         (mobileNotificationsAsync.value ?? false);
@@ -370,15 +334,7 @@ class UserProfileView extends ConsumerWidget {
 
     var watchSubtitle = 'Sincronización con dispositivos';
     if (isWatchLinked) {
-      final types = watchDevices
-          .map((device) {
-            final type = device['device_type'] as String;
-            return type == 'watch_os' ? 'Apple Watch' : 'Wear OS';
-          })
-          .join(', ');
-      watchSubtitle = types.isEmpty
-          ? 'Conectado: Wear OS'
-          : 'Conectado: $types';
+      watchSubtitle = 'Conectado: Wear OS mediante el teléfono';
     }
 
     return SingleChildScrollView(
@@ -403,7 +359,7 @@ class UserProfileView extends ConsumerWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            'ID: $userId',
+            'Identificador: $userId',
             style: const TextStyle(color: AppColors.textSecondary),
           ),
           const SizedBox(height: 4),
@@ -412,8 +368,10 @@ class UserProfileView extends ConsumerWidget {
           _buildSectionTitle('PERFIL'),
           _buildSettingsTile(
             icon: Icons.person_outline,
-            title: 'Información Personal',
-            subtitle: userPhone.isEmpty ? 'Nombre, ID y contacto' : userPhone,
+            title: 'Información personal',
+            subtitle: userPhone.isEmpty
+                ? 'Nombre, identificador y contacto'
+                : userPhone,
             onTap: () => _showEditProfileDialog(
               context,
               ref,
@@ -442,7 +400,7 @@ class UserProfileView extends ConsumerWidget {
           const SizedBox(height: 12),
           _buildSettingsTile(
             icon: Icons.watch_outlined,
-            title: 'Alertas de Smartwatch',
+            title: 'Alertas del reloj inteligente',
             subtitle: watchSubtitle,
             trailing: Switch(
               value: isWatchLinked,
@@ -472,7 +430,7 @@ class UserProfileView extends ConsumerWidget {
           const SizedBox(height: 12),
           _buildSettingsTile(
             icon: Icons.lock_reset,
-            title: 'Cambiar Contraseña',
+            title: 'Cambiar contraseña',
             subtitle: 'Gestiona tus credenciales',
             onTap: () => _showChangePasswordDialog(context, ref),
             trailing: const Icon(
@@ -494,7 +452,7 @@ class UserProfileView extends ConsumerWidget {
               ),
               icon: const Icon(Icons.swap_horiz),
               label: const Text(
-                'Cambiar Modo',
+                'Cambiar modo',
                 style: TextStyle(fontWeight: FontWeight.bold),
               ),
             ),
@@ -515,7 +473,7 @@ class UserProfileView extends ConsumerWidget {
               ),
               icon: const Icon(Icons.logout),
               label: const Text(
-                'Cerrar Sesión',
+                'Cerrar sesión',
                 style: TextStyle(fontWeight: FontWeight.bold),
               ),
             ),
