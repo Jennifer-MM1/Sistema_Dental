@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
+
+import 'package:sistema_dental/features/shared/presentation/widgets/patient_check_in_scanner.dart';
 import 'package:sistema_dental/core/theme/app_colors.dart';
 import 'package:sistema_dental/features/dentist/presentation/widgets/quick_actions_dialogs.dart';
 import 'package:sistema_dental/features/dentist/presentation/widgets/staff_management_view.dart';
 import 'package:sistema_dental/features/shared/data/appointment_repository.dart';
 import 'package:sistema_dental/features/shared/presentation/user_profile_view.dart';
-import 'package:sistema_dental/features/secretary/presentation/billing_view.dart';
+import 'package:sistema_dental/features/shared/presentation/widgets/floating_dock_nav_bar.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -18,9 +21,62 @@ class SecretaryDashboard extends StatefulWidget {
 class _SecretaryDashboardState extends State<SecretaryDashboard> {
   int _selectedIndex = 0;
 
+  Future<String?> _getClinicId() async {
+    final client = Supabase.instance.client;
+    final user = client.auth.currentUser;
+    if (user == null) return null;
+    final membership = await client
+        .from('clinic_memberships')
+        .select('clinic_id')
+        .eq('user_id', user.id)
+        .inFilter('role_in_clinic', ['owner', 'secretary', 'dentist'])
+        .eq('is_active', true)
+        .limit(1)
+        .maybeSingle();
+    return membership?['clinic_id'] as String?;
+  }
+
+  Future<void> _quickRegisterPatient() async {
+    final clinicId = await _getClinicId();
+    if (clinicId == null || !mounted) return;
+    showDialog(
+      context: context,
+      builder: (_) => AddPatientDialog(clinicId: clinicId),
+    );
+  }
+
+  Future<void> _quickScheduleAppointment() async {
+    final clinicId = await _getClinicId();
+    if (clinicId == null || !mounted) return;
+    showDialog(
+      context: context,
+      builder: (_) => ScheduleAppointmentDialog(clinicId: clinicId),
+    );
+  }
+
+  void _handleSync() {
+    setState(() {}); // Simple rebuild to trigger FutureBuilders
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Row(
+          children: [
+            Icon(Icons.check_circle, color: Colors.white),
+            SizedBox(width: 8),
+            Text('Datos sincronizados.'),
+          ],
+        ),
+        backgroundColor: AppColors.success,
+        duration: Duration(seconds: 2),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final isDesktop = MediaQuery.of(context).size.width > 900;
+    final isMobileOrTablet = defaultTargetPlatform == TargetPlatform.android ||
+        defaultTargetPlatform == TargetPlatform.iOS ||
+        MediaQuery.of(context).size.width <= 1300;
+    final isDesktop = !isMobileOrTablet;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -36,24 +92,75 @@ class _SecretaryDashboardState extends State<SecretaryDashboard> {
                   fontWeight: FontWeight.bold,
                 ),
               ),
-            ),
-      drawer: isDesktop ? null : Drawer(child: _buildSidebar()),
-      body: Row(
-        children: [
-          // Sidebar
-          if (isDesktop) _buildSidebar(),
-          // Main Content
-          Expanded(
-            child: Column(
-              children: [
-                if (isDesktop) _buildTopBar(),
-                Expanded(child: _buildMainContent()),
+              actions: [
+                IconButton(
+                  tooltip: 'Sincronizar datos',
+                  icon: const Icon(Icons.sync, color: AppColors.primaryBlue),
+                  onPressed: _handleSync,
+                ),
               ],
             ),
+      drawer: Drawer(child: _buildSidebar()),
+      body: Stack(
+        children: [
+          Row(
+            children: [
+              // Sidebar
+              if (isDesktop) _buildSidebar(),
+              // Main Content
+              Expanded(
+                child: Column(
+                  children: [
+                    if (isDesktop) _buildTopBar(),
+                    Expanded(child: _buildMainContent()),
+                  ],
+                ),
+              ),
+            ],
           ),
+          if (!isDesktop)
+            FloatingDockNavBar(
+              selectedIndex: _currentDockIndex,
+              onItemSelected: (index) {
+                if (index == 0) setState(() => _selectedIndex = 0);
+                if (index == 3) setState(() => _selectedIndex = 1);
+                if (index == 4) setState(() => _selectedIndex = 4);
+              },
+              items: [
+                const DockItemData(
+                  icon: Icons.home_rounded,
+                  label: 'Home',
+                ),
+                DockItemData(
+                  icon: Icons.person_add_rounded,
+                  label: 'Reg. Paciente',
+                  onTapOverride: _quickRegisterPatient,
+                ),
+                DockItemData(
+                  icon: Icons.edit_calendar_rounded,
+                  label: 'Reg. Cita',
+                  onTapOverride: _quickScheduleAppointment,
+                ),
+                const DockItemData(
+                  icon: Icons.people_rounded,
+                  label: 'Pacientes',
+                ),
+                const DockItemData(
+                  icon: Icons.person_rounded,
+                  label: 'Perfil',
+                ),
+              ],
+            ),
         ],
       ),
     );
+  }
+
+  int get _currentDockIndex {
+    if (_selectedIndex == 0) return 0;
+    if (_selectedIndex == 1) return 3;
+    if (_selectedIndex == 4) return 4;
+    return -1;
   }
 
   Widget _buildSidebar() {
@@ -95,14 +202,13 @@ class _SecretaryDashboardState extends State<SecretaryDashboard> {
             'Gestión Dentistas',
           ),
           _buildSidebarItem(3, Icons.calendar_month_outlined, 'Agenda Global'),
-          _buildSidebarItem(4, Icons.receipt_long_outlined, 'Facturación'),
-          _buildSidebarItem(5, Icons.person_outline, 'Perfil'),
+          _buildSidebarItem(4, Icons.person_outline, 'Perfil'),
           const Spacer(),
           Padding(
             padding: const EdgeInsets.all(16.0),
             child: InkWell(
               onTap: () {
-                setState(() => _selectedIndex = 5);
+                setState(() => _selectedIndex = 4);
                 if (MediaQuery.of(context).size.width <= 900) {
                   Navigator.of(context).pop();
                 }
@@ -259,7 +365,7 @@ class _SecretaryDashboardState extends State<SecretaryDashboard> {
             ),
             onSelected: (value) async {
               if (value == 'profile') {
-                setState(() => _selectedIndex = 5);
+                setState(() => _selectedIndex = 4);
               } else if (value == 'mode') {
                 context.go('/mode_selector');
               } else if (value == 'logout') {
@@ -310,34 +416,56 @@ class _SecretaryDashboardState extends State<SecretaryDashboard> {
   }
 
   Widget _buildMainContent() {
+    final isDesktop = MediaQuery.of(context).size.width > 1300;
+    final bottomPad = isDesktop ? 0.0 : 90.0;
+
+    Widget content;
     switch (_selectedIndex) {
       case 0:
-        return SecretaryDashboardView(
-          onOpenBilling: () => setState(() => _selectedIndex = 4),
-        );
+        content = const SecretaryDashboardView(key: ValueKey(0));
+        break;
       case 1:
-        return const PatientsManagementView();
+        content = const PatientsManagementView(key: ValueKey(1));
+        break;
       case 2:
-        return const StaffManagementView(
+        content = const StaffManagementView(
+          key: ValueKey(2),
           dentistsOnly: true,
           showInviteAction: true,
           includeInactiveMembers: true,
         );
+        break;
       case 3:
-        return const GlobalAgendaView();
+        content = const GlobalAgendaView(key: ValueKey(3));
+        break;
       case 4:
-        return const BillingView();
-      case 5:
-        return const UserProfileView(
+        content = const UserProfileView(
+          key: ValueKey(4),
           roleLabel: 'Secretaria / Recepción',
           avatarIcon: Icons.support_agent,
         );
+        break;
       default:
-        return const UserProfileView(
+        content = const UserProfileView(
+          key: ValueKey(99),
           roleLabel: 'Secretaria / Recepción',
           avatarIcon: Icons.support_agent,
         );
     }
+
+    return Padding(
+      padding: EdgeInsets.only(bottom: bottomPad),
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 260),
+        switchInCurve: Curves.easeOut,
+        switchOutCurve: Curves.easeIn,
+        transitionBuilder: (child, animation) => FadeTransition(
+          opacity: animation,
+          child: child,
+        ),
+        child: content,
+      ),
+    );
   }
 }
 
@@ -346,9 +474,7 @@ class _SecretaryDashboardState extends State<SecretaryDashboard> {
 // ----------------------------------------------------
 
 class SecretaryDashboardView extends StatefulWidget {
-  const SecretaryDashboardView({super.key, required this.onOpenBilling});
-
-  final VoidCallback onOpenBilling;
+  const SecretaryDashboardView({super.key});
 
   @override
   State<SecretaryDashboardView> createState() => _SecretaryDashboardViewState();
@@ -359,7 +485,6 @@ class _SecretaryDashboardViewState extends State<SecretaryDashboardView> {
   int _appointmentsToday = 0;
   int _newPatients = 0;
   int _activeDentists = 0;
-  double _dailyIncome = 0;
   List<dynamic> _upcomingAppts = [];
   String? _clinicId;
 
@@ -431,14 +556,6 @@ class _SecretaryDashboardViewState extends State<SecretaryDashboardView> {
 
       _appointmentsToday = appts.length;
 
-      double income = 0;
-      for (var appt in appts) {
-        if (appt['status'] == 'completed') {
-          income += (appt['services']?['price'] ?? 0).toDouble();
-        }
-      }
-      _dailyIncome = income;
-
       _upcomingAppts = appts
           .where(
             (a) => a['status'] != 'completed' && a['status'] != 'cancelled',
@@ -477,7 +594,7 @@ class _SecretaryDashboardViewState extends State<SecretaryDashboardView> {
           LayoutBuilder(
             builder: (context, constraints) {
               int columns = constraints.maxWidth > 900
-                  ? 4
+                  ? 3
                   : (constraints.maxWidth > 600 ? 2 : 1);
               double width =
                   (constraints.maxWidth - (columns - 1) * 16) / columns;
@@ -510,15 +627,6 @@ class _SecretaryDashboardViewState extends State<SecretaryDashboardView> {
                       '$_activeDentists',
                       'Activos',
                       Icons.medical_services,
-                    ),
-                  ),
-                  SizedBox(
-                    width: width,
-                    child: _buildStatCard(
-                      'Ingresos Diarios',
-                      '\$${_dailyIncome.toStringAsFixed(2)}',
-                      'En citas completadas',
-                      Icons.attach_money,
                     ),
                   ),
                 ],
@@ -593,24 +701,6 @@ class _SecretaryDashboardViewState extends State<SecretaryDashboardView> {
             label: const Text(
               'Agendar Cita Manual',
               style: TextStyle(color: Colors.white),
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-          const SizedBox(height: 12),
-          ElevatedButton.icon(
-            onPressed: widget.onOpenBilling,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.lightBlueAccent,
-              foregroundColor: AppColors.primaryBlue,
-              minimumSize: const Size(double.infinity, 50),
-              alignment: Alignment.centerLeft,
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              elevation: 0,
-            ),
-            icon: const Icon(Icons.payment),
-            label: const Text(
-              'Registrar Pago',
-              style: TextStyle(fontWeight: FontWeight.bold),
               overflow: TextOverflow.ellipsis,
             ),
           ),
@@ -847,7 +937,7 @@ class _GlobalAgendaViewState extends State<GlobalAgendaView> {
       final appointments = await client
           .from('appointments')
           .select(
-            '*, patients(first_name, last_name), doctors(profiles(name)), services(service_name, duration_mins)',
+            '*, patients(first_name, last_name, profile_id), doctors(profiles(name)), services(service_name, duration_mins)',
           )
           .eq('clinic_id', clinicId)
           .gte('date_time', range.startUtc.toIso8601String())
@@ -930,6 +1020,53 @@ class _GlobalAgendaViewState extends State<GlobalAgendaView> {
     return '${_selectedDate.day} de ${months[_selectedDate.month - 1]} de ${_selectedDate.year}';
   }
 
+  Future<void> _changeStatus(String appointmentId, String newStatus, String successMessage) async {
+    try {
+      await Supabase.instance.client
+          .from('appointments')
+          .update({'status': newStatus})
+          .eq('id', appointmentId);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(successMessage), backgroundColor: AppColors.success),
+        );
+        await _loadAgenda();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al cambiar el estado: $e'), backgroundColor: AppColors.error),
+        );
+      }
+    }
+  }
+
+  Future<void> _scanCheckIn() async {
+    final scannedCode = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const PatientCheckInScannerPage(),
+      ),
+    );
+    if (scannedCode == null || !mounted) return;
+
+    final code = scannedCode.trim();
+    final appointment = _appointments.where((a) => 
+        (a['patients']?['profile_id'] == code || a['patient_id'] == code) && 
+        a['status'] == 'upcoming').firstOrNull;
+
+    if (appointment != null) {
+      await _changeStatus(appointment['id'], 'in_lobby', 'Llegada registrada exitosamente.');
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No se encontró una cita pendiente para este paciente en el día seleccionado.'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+    }
+  }
+
   String _statusLabel(String status) => switch (status) {
     'upcoming' => 'Programada',
     'in_lobby' => 'En espera',
@@ -952,10 +1089,26 @@ class _GlobalAgendaViewState extends State<GlobalAgendaView> {
     final isDesktop = MediaQuery.of(context).size.width > 900;
     return Scaffold(
       backgroundColor: Colors.transparent,
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _clinicId == null ? null : _scheduleAppointment,
-        icon: const Icon(Icons.add),
-        label: const Text('Nueva cita'),
+      floatingActionButton: Column(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          FloatingActionButton.extended(
+            heroTag: 'secScanCheckInBtn',
+            onPressed: _clinicId == null ? null : _scanCheckIn,
+            backgroundColor: Colors.white,
+            foregroundColor: AppColors.primaryBlue,
+            icon: const Icon(Icons.qr_code_scanner),
+            label: const Text('Escanear Llegada'),
+          ),
+          const SizedBox(height: 16),
+          FloatingActionButton.extended(
+            heroTag: 'secAddApptBtn',
+            onPressed: _clinicId == null ? null : _scheduleAppointment,
+            backgroundColor: AppColors.primaryBlue,
+            icon: const Icon(Icons.add, color: Colors.white),
+            label: const Text('Nueva cita', style: TextStyle(color: Colors.white)),
+          ),
+        ],
       ),
       body: Padding(
         padding: EdgeInsets.all(isDesktop ? 32 : 16),
@@ -1091,10 +1244,28 @@ class _GlobalAgendaViewState extends State<GlobalAgendaView> {
                   labelStyle: TextStyle(color: _statusColor(status)),
                   backgroundColor: _statusColor(status).withValues(alpha: 0.08),
                 ),
-                if (status == 'upcoming')
+                if (status == 'upcoming') ...[
                   const Padding(
                     padding: EdgeInsets.only(left: 6),
                     child: Icon(Icons.edit_calendar_outlined, size: 18),
+                  ),
+                  IconButton(
+                    tooltip: 'Marcar llegada',
+                    icon: const Icon(Icons.login, color: AppColors.primaryBlue),
+                    onPressed: () => _changeStatus(appointment['id'], 'in_lobby', 'Llegada registrada.'),
+                  ),
+                ],
+                if (status == 'in_lobby')
+                  IconButton(
+                    tooltip: 'Llamar a consultorio',
+                    icon: const Icon(Icons.campaign, color: AppColors.primaryBlue),
+                    onPressed: () => _changeStatus(appointment['id'], 'in_treatment', 'Paciente llamado a consultorio.'),
+                  ),
+                if (status == 'in_treatment')
+                  IconButton(
+                    tooltip: 'Completar consulta',
+                    icon: const Icon(Icons.check_circle, color: AppColors.primaryBlue),
+                    onPressed: () => _changeStatus(appointment['id'], 'completed', 'Consulta completada.'),
                   ),
               ],
             ),
@@ -1485,10 +1656,12 @@ class _EditPatientDialogState extends State<EditPatientDialog> {
   late String _relationship;
   DateTime? _dateOfBirth;
   bool _isSaving = false;
+  late bool _isSelf;
 
   @override
   void initState() {
     super.initState();
+    _isSelf = (widget.patient['relationship']?.toString() == 'self');
     _firstNameController = TextEditingController(
       text: widget.patient['first_name']?.toString() ?? '',
     );
@@ -1512,16 +1685,22 @@ class _EditPatientDialogState extends State<EditPatientDialog> {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _isSaving = true);
     try {
+      final updateData = <String, dynamic>{
+        'date_of_birth': _dateOfBirth?.toIso8601String().split('T').first,
+      };
+
+      if (!_isSelf) {
+        updateData['first_name'] = _firstNameController.text.trim();
+        updateData['last_name'] = _lastNameController.text.trim();
+        updateData['relationship'] = _relationship;
+      }
+
       await Supabase.instance.client
           .from('patients')
-          .update({
-            'first_name': _firstNameController.text.trim(),
-            'last_name': _lastNameController.text.trim(),
-            'relationship': _relationship,
-            'date_of_birth': _dateOfBirth?.toIso8601String().split('T').first,
-          })
+          .update(updateData)
           .eq('id', widget.patient['id'])
           .eq('clinic_id', widget.clinicId);
+
       if (mounted) Navigator.pop(context, true);
     } catch (error) {
       if (mounted) {
@@ -1537,7 +1716,7 @@ class _EditPatientDialogState extends State<EditPatientDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('Editar paciente'),
+      title: Text(_isSelf ? 'Ficha del Cliente Titular' : 'Editar Paciente'),
       content: SizedBox(
         width: 480,
         child: Form(
@@ -1546,50 +1725,81 @@ class _EditPatientDialogState extends State<EditPatientDialog> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
+                if (_isSelf)
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: AppColors.primaryBlue.withAlpha(15),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Text(
+                      'El nombre del cliente titular lo administra él mismo. Solo se puede especificar su fecha de nacimiento.',
+                      style: TextStyle(fontSize: 12, color: AppColors.textPrimary),
+                    ),
+                  ),
                 TextFormField(
                   controller: _firstNameController,
-                  decoration: const InputDecoration(labelText: 'Nombre'),
-                  validator: (value) => value == null || value.trim().isEmpty
-                      ? 'Requerido'
-                      : null,
+                  enabled: !_isSelf,
+                  decoration: InputDecoration(
+                    labelText: 'Nombre',
+                    helperText: _isSelf ? '🔒 Cuenta del cliente' : null,
+                  ),
+                  validator: (value) =>
+                      !_isSelf && (value == null || value.trim().isEmpty)
+                          ? 'Requerido'
+                          : null,
                 ),
                 const SizedBox(height: 12),
                 TextFormField(
                   controller: _lastNameController,
+                  enabled: !_isSelf,
                   decoration: const InputDecoration(labelText: 'Apellido'),
-                  validator: (value) => value == null || value.trim().isEmpty
-                      ? 'Requerido'
-                      : null,
+                  validator: (value) =>
+                      !_isSelf && (value == null || value.trim().isEmpty)
+                          ? 'Requerido'
+                          : null,
                 ),
                 const SizedBox(height: 12),
-                DropdownButtonFormField<String>(
-                  initialValue: _relationship,
-                  decoration: const InputDecoration(labelText: 'RelaciÃ³n'),
-                  items: const [
-                    DropdownMenuItem(value: 'self', child: Text('Titular')),
-                    DropdownMenuItem(value: 'child', child: Text('Hijo/a')),
-                    DropdownMenuItem(value: 'spouse', child: Text('CÃ³nyuge')),
-                    DropdownMenuItem(
-                      value: 'parent',
-                      child: Text('Padre/Madre'),
-                    ),
-                    DropdownMenuItem(value: 'other', child: Text('Otro')),
-                  ],
-                  onChanged: (value) {
-                    if (value != null) setState(() => _relationship = value);
-                  },
-                ),
+                if (_isSelf)
+                  TextFormField(
+                    initialValue: 'Paciente Titular (Self)',
+                    enabled: false,
+                    decoration: const InputDecoration(labelText: 'Relación'),
+                  )
+                else
+                  DropdownButtonFormField<String>(
+                    initialValue: ['child', 'spouse', 'parent', 'other'].contains(_relationship)
+                        ? _relationship
+                        : 'other',
+                    decoration: const InputDecoration(labelText: 'Relación'),
+                    items: const [
+                      DropdownMenuItem(value: 'child', child: Text('Hijo/a')),
+                      DropdownMenuItem(value: 'spouse', child: Text('Cónyuge')),
+                      DropdownMenuItem(
+                        value: 'parent',
+                        child: Text('Padre/Madre'),
+                      ),
+                      DropdownMenuItem(value: 'other', child: Text('Otro')),
+                    ],
+                    onChanged: (value) {
+                      if (value != null) setState(() => _relationship = value);
+                    },
+                  ),
                 const SizedBox(height: 12),
                 ListTile(
                   contentPadding: EdgeInsets.zero,
                   title: Text(
                     _dateOfBirth == null
-                        ? 'Fecha de nacimiento'
-                        : '${_dateOfBirth!.day.toString().padLeft(2, '0')}/'
+                        ? 'Fecha de nacimiento (Sin registrar)'
+                        : 'Fecha de nac.: ${_dateOfBirth!.day.toString().padLeft(2, '0')}/'
                               '${_dateOfBirth!.month.toString().padLeft(2, '0')}/'
                               '${_dateOfBirth!.year}',
                   ),
-                  trailing: const Icon(Icons.cake_outlined),
+                  subtitle: _isSelf
+                      ? const Text('✏️ Haz clic para agregar/editar fecha', style: TextStyle(fontSize: 11, color: AppColors.primaryBlue))
+                      : null,
+                  trailing: const Icon(Icons.cake_outlined, color: AppColors.primaryBlue),
                   onTap: () async {
                     final selected = await showDatePicker(
                       context: context,
