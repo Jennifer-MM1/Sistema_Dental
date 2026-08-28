@@ -22,6 +22,10 @@ const STATUS_MESSAGES: Record<string, { title: string; body: string }> = {
     title: "✅ DentalSync – Consulta completada",
     body: "Tu consulta ha finalizado. Esperamos verte pronto. ¡Que te mejores!",
   },
+  reminder: {
+    title: "⏳ DentalSync – ¡Recordatorio!",
+    body: "Tienes una cita programada. Por favor asiste puntualmente.",
+  },
 };
 
 // ── JWT + OAuth2 para FCM v1 API ────────────────────────────────────────────
