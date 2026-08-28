@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:sistema_dental/core/wear/wear_link_service.dart';
+import 'package:sistema_dental/features/wear/data/wear_data_service.dart';
 import 'package:sistema_dental/features/wear/presentation/wear_bootstrap_screen.dart';
 import 'package:sistema_dental/features/wear/presentation/wear_shell.dart';
 
@@ -11,34 +12,34 @@ class WearLinkWaitingScreen extends StatefulWidget {
 }
 
 class _WearLinkWaitingScreenState extends State<WearLinkWaitingScreen> {
-  bool _syncing = false;
-  String _message = 'Abre DentalSync en tu telefono y vincula este reloj.';
+  bool _isChecking = false;
 
-  Future<void> _retrySync() async {
-    if (_syncing) return;
+  Future<void> _handleVincularPress() async {
+    setState(() => _isChecking = true);
 
-    setState(() {
-      _syncing = true;
-      _message = 'Buscando vinculacion...';
-    });
-
-    final data = await WearLinkService.instance.readCompanionState();
-
+    final state = await WearLinkService.instance.readCompanionState();
     if (!mounted) return;
 
-    if (data != null && data.isLinked) {
-      Navigator.pushAndRemoveUntil(
-        context,
-        MaterialPageRoute(builder: (_) => const WearBootstrapScreen()),
-        (_) => false,
+    if (state == null || !state.isLinked) {
+      if (!mounted) return;
+      setState(() => _isChecking = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No se pudo establecer la conexión Bluetooth con el teléfono.'),
+          backgroundColor: Colors.redAccent,
+        ),
       );
       return;
     }
 
-    setState(() {
-      _syncing = false;
-      _message = 'Todavia no se recibio la vinculacion.';
-    });
+    if (!mounted) return;
+    setState(() => _isChecking = false);
+
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (_) => const WearBootstrapScreen()),
+      (_) => false,
+    );
   }
 
   @override
@@ -48,75 +49,94 @@ class _WearLinkWaitingScreenState extends State<WearLinkWaitingScreen> {
         child: FittedBox(
           fit: BoxFit.scaleDown,
           child: SizedBox(
-            width: 185,
+            width: 175,
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const WearTopBar(),
+                const WearTopBar(showSettings: false),
+                const SizedBox(height: 4),
+
+                // 🟢 INTERFAZ DE BIENVENIDA AL RELOJ
+                const WearTitle('DentalSync Wear'),
                 const SizedBox(height: 8),
-                const WearTitle('Vinculacion'),
-                const SizedBox(height: 18),
                 Container(
-                  width: 58,
-                  height: 58,
+                  width: 48,
+                  height: 48,
                   decoration: BoxDecoration(
-                    color: const Color(0xFF0A0F12),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: const Color(0xFF1C2D35)),
+                    color: const Color(0xFF078256).withAlpha(50),
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: const Color(0xFF78F2C0),
+                      width: 1.5,
+                    ),
                   ),
-                  child: _syncing
-                      ? const Padding(
-                          padding: EdgeInsets.all(16),
-                          child: CircularProgressIndicator(
-                            strokeWidth: 3,
-                            color: Color(0xFF78F2C0),
-                          ),
-                        )
-                      : const Icon(
-                          Icons.watch_outlined,
-                          color: Color(0xFF78F2C0),
-                          size: 32,
-                        ),
-                ),
-                const SizedBox(height: 14),
-                const Text(
-                  'Esperando reloj',
-                  textAlign: TextAlign.center,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w800,
+                  child: const Icon(
+                    Icons.watch_outlined,
+                    color: Color(0xFF78F2C0),
+                    size: 26,
                   ),
                 ),
                 const SizedBox(height: 6),
-                Text(
-                  _message,
+                const Text(
+                  '¡Bienvenido!',
                   textAlign: TextAlign.center,
-                  maxLines: 3,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Color(0xFF8B969E),
-                    fontSize: 10,
-                    height: 1.25,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
                   ),
                 ),
-                const SizedBox(height: 14),
+                const SizedBox(height: 2),
+                const Text(
+                  'Reloj no vinculado',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Color(0xFF9E9E9E),
+                    fontSize: 10,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 12),
+
+                // BOTÓN VINCULAR RELOJ
                 SizedBox(
-                  width: double.infinity,
-                  height: 34,
+                  width: 140,
+                  height: 38,
                   child: FilledButton(
-                    onPressed: _syncing ? null : _retrySync,
+                    onPressed: _isChecking ? null : _handleVincularPress,
                     style: FilledButton.styleFrom(
-                      backgroundColor: const Color(0xFF087956),
-                      foregroundColor: Colors.white,
-                      padding: EdgeInsets.zero,
+                      backgroundColor: const Color(0xFF78F2C0),
+                      foregroundColor: const Color(0xFF044830),
+                      elevation: 4,
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
+                        borderRadius: BorderRadius.circular(16),
                       ),
                     ),
-                    child: Text(_syncing ? 'Sincronizando' : 'Reintentar'),
+                    child: _isChecking
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Color(0xFF044830),
+                            ),
+                          )
+                        : const Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.link_rounded, size: 16),
+                              SizedBox(width: 4),
+                              Text(
+                                'VINCULAR RELOJ',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                            ],
+                          ),
                   ),
                 ),
               ],

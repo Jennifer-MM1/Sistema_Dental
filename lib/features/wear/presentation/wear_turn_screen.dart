@@ -33,9 +33,27 @@ class WearTurnScreen extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     const WearTopBar(),
-                    SizedBox(height: compact ? 3 : 5),
-                    const WearTitle('Estado de espera'),
-                    SizedBox(height: compact ? 8 : 12),
+                    SizedBox(height: compact ? 2 : 4),
+                    Row(
+                      children: [
+                        if (Navigator.canPop(context))
+                          InkWell(
+                            onTap: () => Navigator.pop(context),
+                            borderRadius: BorderRadius.circular(12),
+                            child: const Padding(
+                              padding: EdgeInsets.symmetric(horizontal: 2, vertical: 2),
+                              child: Icon(
+                                Icons.arrow_back_ios_new,
+                                color: Color(0xFF78F2C0),
+                                size: 13,
+                              ),
+                            ),
+                          ),
+                        const Expanded(child: WearTitle('Ficha de Cita')),
+                        if (Navigator.canPop(context)) const SizedBox(width: 17),
+                      ],
+                    ),
+                    SizedBox(height: compact ? 6 : 10),
                     Container(
                       width: designWidth,
                       padding: EdgeInsets.all(cardPadding),
@@ -150,6 +168,16 @@ class WearTurnScreen extends StatelessWidget {
                                         fontSize: compact ? 8 : 9,
                                       ),
                                     ),
+                                    Text(
+                                      '📅 ${data.dateTimeLabel}',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        color: const Color(0xFFFFE082),
+                                        fontSize: compact ? 7.5 : 8.5,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
                                   ],
                                 ),
                               ),
@@ -159,27 +187,28 @@ class WearTurnScreen extends StatelessWidget {
                       ),
                     ),
                     SizedBox(height: compact ? 6 : 10),
-                    SizedBox(
-                      width: designWidth,
-                      height: compact ? 26 : 32,
-                      child: TextButton(
-                        onPressed: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) =>
-                                WearAlertScreen(data: data, isDemo: isDemo),
+                    if (isDemo)
+                      SizedBox(
+                        width: designWidth,
+                        height: compact ? 26 : 32,
+                        child: TextButton(
+                          onPressed: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) =>
+                                  WearAlertScreen(data: data, isDemo: isDemo),
+                            ),
+                          ),
+                          style: TextButton.styleFrom(
+                            padding: EdgeInsets.zero,
+                            foregroundColor: const Color(0xFF78F2C0),
+                          ),
+                          child: Text(
+                            'Simular alerta',
+                            style: TextStyle(fontSize: compact ? 10 : 11),
                           ),
                         ),
-                        style: TextButton.styleFrom(
-                          padding: EdgeInsets.zero,
-                          foregroundColor: const Color(0xFF78F2C0),
-                        ),
-                        child: Text(
-                          'Simular alerta',
-                          style: TextStyle(fontSize: compact ? 10 : 11),
-                        ),
                       ),
-                    ),
                   ],
                 ),
               ),

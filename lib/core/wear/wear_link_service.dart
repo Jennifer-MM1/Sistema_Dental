@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -27,6 +28,53 @@ class WearLinkService {
   Timer? _companionTimer;
   StreamSubscription<AuthState>? _authSubscription;
   bool _syncing = false;
+
+  WearStartupData? _cachedStartupData;
+
+  /// Lee el estado del reloj de forma segura sin lanzar excepciones no capturadas.
+  /// El reloj SOLO lee datos que el teléfono envió vía el canal nativo (Wearable Data Layer).
+  /// Si no hay datos disponibles, retorna null para mostrar la pantalla de vinculación.
+  Future<WearStartupData?> readCompanionState() async {
+    if (_cachedStartupData != null) return _cachedStartupData;
+
+    try {
+      if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+        final raw = await _channel.invokeMethod<String>('readWearCompanionState');
+        if (raw != null && raw.isNotEmpty) {
+          final json = jsonDecode(raw) as Map<String, dynamic>;
+          _cachedStartupData = WearStartupData.fromJson(json);
+          return _cachedStartupData;
+        }
+      }
+    } on MissingPluginException {
+      // Canal nativo no disponible (emulador sin reloj físico conectado)
+    } on PlatformException catch (e) {
+      debugPrint('[Wear] Error leyendo estado del canal nativo: $e');
+    } catch (e) {
+      debugPrint('[Wear] Error inesperado en readCompanionState: $e');
+    }
+
+    // Sin datos del teléfono → el reloj mostrará pantalla de vinculación
+    return null;
+  }
+
+  void setStartupData(WearStartupData data) {
+    _cachedStartupData = data;
+  }
+
+  /// Carga los datos reales del usuario desde Supabase para la vista previa
+  /// web del reloj. Solo debe llamarse en [kIsWeb].
+  Future<WearStartupData?> buildStartupDataForWeb({String? roleLabel}) async {
+    try {
+      final user = Supabase.instance.client.auth.currentUser;
+      if (user == null) return null;
+      final json = await _buildCompanionState(roleLabel: roleLabel ?? '');
+      return WearStartupData.fromJson(json);
+    } catch (e) {
+      debugPrint('[WearLinkService] Error generating web startup data: $e');
+      return null;
+    }
+  }
 
   Future<void> startPhoneCompanion() async {
     if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return;
@@ -84,6 +132,18 @@ class WearLinkService {
     required String action,
   }) async {
     try {
+      if (kIsWeb) {
+        final userId = Supabase.instance.client.auth.currentUser?.id;
+        if (userId != null) {
+          await _applyWearAction(
+            appointmentId: appointmentId,
+            action: action,
+            userId: userId,
+          );
+          return true;
+        }
+        return false;
+      }
       return await _channel.invokeMethod<bool>('sendWearAction', {
             'appointment_id': appointmentId,
             'action': action,
@@ -184,30 +244,6 @@ class WearLinkService {
         deviceCount: 0,
         message: 'No se pudo preparar la información del reloj.',
       );
-    }
-  }
-
-  Future<WearStartupData?> readCompanionState() async {
-    try {
-      final unlinked = await consumePendingUnlink();
-      if (unlinked) return null;
-
-      final payload = await _channel.invokeMapMethod<String, dynamic>(
-        'consumePendingWearSession',
-      );
-      final stateJson = payload?['state_json'] as String?;
-      if (stateJson == null || stateJson.isEmpty) return null;
-
-      final state = jsonDecode(stateJson) as Map<String, dynamic>;
-      if (state['is_linked'] == false) return null;
-      return WearStartupData.fromJson(state);
-    } on MissingPluginException {
-      return null;
-    } on PlatformException {
-      return null;
-    } catch (e) {
-      debugPrint('[Wear] Error leyendo estado companion: $e');
-      return null;
     }
   }
 
@@ -369,7 +405,7 @@ class WearLinkService {
     final clinicRole = membership?['role_in_clinic'] as String?;
     final clinicId = membership?['clinic_id'] as String?;
     final role = _wearRole(roleLabel, clinicRole, profile?['role'] as String?);
-    final summary = await _buildSummary(profile, user.id);
+    final summary = await _buildSummary(profile, user.id, role: role);
 
     Map<String, dynamic>? patientQueue;
     Map<String, dynamic>? doctorQueue;
@@ -395,8 +431,9 @@ class WearLinkService {
 
   Future<Map<String, dynamic>> _buildSummary(
     Map<String, dynamic>? profile,
-    String userId,
-  ) async {
+    String userId, {
+    String role = 'patient',
+  }) async {
     final client = Supabase.instance.client;
     final user = client.auth.currentUser!;
     final patients = await client
@@ -413,10 +450,16 @@ class WearLinkService {
           .from('appointments')
           .select('''
             id,
+            clinic_id,
+            doctor_id,
             patient_id,
             date_time,
             status,
-            patient:patients(first_name, last_name)
+            queue_code,
+            reminder_sent,
+            patient:patients(first_name, last_name),
+            doctor:doctors(cabin_assigned, user:profiles(name)),
+            service:services(service_name, duration_mins)
           ''')
           .inFilter('patient_id', patientIds)
           .inFilter('status', ['upcoming', 'in_lobby', 'in_treatment'])
@@ -433,6 +476,43 @@ class WearLinkService {
       }).toList();
     }
 
+    final List<Map<String, dynamic>> parsedAppts = [];
+    for (final row in appointmentRows) {
+      final clinicId = row['clinic_id'] as String? ?? '';
+      int ahead = 0;
+      if (clinicId.isNotEmpty) {
+        ahead = await _countPeopleAhead(
+          clinicId: clinicId,
+          dateTime: row['date_time'] as String? ?? '',
+          doctorId: row['doctor_id'] as String?,
+        );
+      }
+      final rawCode = row['queue_code'] as String?;
+      final code = (rawCode != null && rawCode.isNotEmpty && rawCode != 'Sin turno')
+          ? rawCode
+          : (row['status'] == 'in_treatment'
+              ? 'T-01'
+              : (ahead > 0 ? 'C-0${ahead + 1}' : 'T-01'));
+
+      final dt = DateTime.tryParse(row['date_time'] as String? ?? '')?.toLocal();
+      final timeStr = dt != null
+          ? '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}'
+          : 'Hoy';
+
+      parsedAppts.add({
+        'patient_name': _patientName(row),
+        'queue_code': code,
+        'people_ahead': ahead,
+        'estimated_minutes': ((row['service']?['duration_mins'] as int?) ?? 15) * (ahead + 1),
+        'doctor_name': row['doctor']?['user']?['name'] as String? ?? 'Dentista',
+        'service_name': row['service']?['service_name'] as String? ?? 'Consulta Dental',
+        'room_name': row['doctor']?['cabin_assigned'] as String? ?? 'Consultorio',
+        'status': row['status'] as String? ?? 'upcoming',
+        'date_time_label': 'Hoy • $timeStr',
+        'has_reminder': row['reminder_sent'] == true,
+      });
+    }
+
     final next = appointmentRows.isEmpty ? null : appointmentRows.first;
     return {
       'user_name':
@@ -441,11 +521,12 @@ class WearLinkService {
           user.email?.split('@').first ??
           'Cliente',
       'email': profile?['email'] as String? ?? user.email ?? '',
-      'role_label': _roleLabel(profile?['role'] as String? ?? 'client'),
+      'role_label': role == 'patient' ? 'Cliente' : _roleLabel(profile?['role'] as String? ?? 'client'),
       'patient_names': patientRows.map(_patientRowName).toList(),
       'appointment_count': appointmentRows.length,
       'next_patient_name': next == null ? null : _patientName(next),
       'next_appointment_time': next?['date_time'] as String?,
+      'appointments': parsedAppts,
     };
   }
 
@@ -470,6 +551,7 @@ class WearLinkService {
           date_time,
           status,
           queue_code,
+          reminder_sent,
           patient:patients(first_name, last_name),
           doctor:doctors(cabin_assigned, user:profiles(name)),
           service:services(service_name, duration_mins)
@@ -492,12 +574,24 @@ class WearLinkService {
       dateTime: appointment['date_time'] as String,
       doctorId: appointment['doctor_id'] as String?,
     );
+    final rawCode = appointment['queue_code'] as String?;
+    final code = (rawCode != null && rawCode.isNotEmpty && rawCode != 'Sin turno')
+        ? rawCode
+        : (appointment['status'] == 'in_treatment'
+            ? 'T-01'
+            : (ahead > 0 ? 'C-0${ahead + 1}' : 'T-01'));
+
+    final dt = DateTime.tryParse(appointment['date_time'] as String? ?? '')?.toLocal();
+    final timeStr = dt != null
+        ? '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}'
+        : 'Hoy';
+
     return {
       'patient_name': _patientName(appointment),
-      'queue_code': appointment['queue_code'] as String? ?? 'Sin turno',
+      'queue_code': code,
       'people_ahead': ahead,
       'estimated_minutes':
-          ((appointment['service']?['duration_mins'] as int?) ?? 6) * ahead,
+          math.max(10, ((appointment['service']?['duration_mins'] as int?) ?? 15) * (ahead + 1)),
       'doctor_name':
           appointment['doctor']?['user']?['name'] as String? ?? 'Dentista',
       'service_name':
@@ -505,6 +599,8 @@ class WearLinkService {
       'room_name':
           appointment['doctor']?['cabin_assigned'] as String? ?? 'Consultorio',
       'status': appointment['status'] as String? ?? 'upcoming',
+      'has_reminder': appointment['reminder_sent'] == true,
+      'date_time_label': 'Hoy • $timeStr',
     };
   }
 
@@ -635,8 +731,19 @@ class WearLinkService {
   }
 
   String _wearRole(String roleLabel, String? clinicRole, String? profileRole) {
+    final explicit = roleLabel.trim().toLowerCase();
+    if (explicit == 'client' || explicit == 'patient' || explicit == 'cliente') {
+      return 'patient';
+    }
+    if (explicit == 'dentist' || explicit == 'dentista') {
+      return 'dentist';
+    }
+    if (explicit == 'secretary' || explicit == 'secretaria' || explicit == 'staff') {
+      return 'secretary';
+    }
+
     final source =
-        '${roleLabel.toLowerCase()} ${clinicRole ?? ''} ${profileRole ?? ''}';
+        '${clinicRole ?? ''} ${profileRole ?? ''}';
     if (source.contains('secretary') || source.contains('secretaria')) {
       return 'secretary';
     }

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:math' as math;
+import 'package:flutter/foundation.dart';
 
 import 'package:flutter/material.dart';
 import 'package:sistema_dental/core/wear/wear_link_service.dart';
@@ -102,20 +103,48 @@ class _WearTopBarState extends State<WearTopBar> {
           ),
         ),
         if (widget.showSettings)
-          InkWell(
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const WearSettingsScreen()),
-            ),
-            borderRadius: BorderRadius.circular(12),
-            child: const Padding(
-              padding: EdgeInsets.all(2),
-              child: Icon(
-                Icons.settings_outlined,
-                color: Color(0xFF78F2C0),
-                size: 18,
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              InkWell(
+                onTap: () {
+                  Navigator.pushAndRemoveUntil(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const WearBootstrapScreen(),
+                    ),
+                    (_) => false,
+                  );
+                },
+                borderRadius: BorderRadius.circular(12),
+                child: const Padding(
+                  padding: EdgeInsets.all(2),
+                  child: Icon(
+                    Icons.refresh,
+                    color: Color(0xFF78F2C0),
+                    size: 18,
+                  ),
+                ),
               ),
-            ),
+              const SizedBox(width: 4),
+              InkWell(
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const WearSettingsScreen(),
+                  ),
+                ),
+                borderRadius: BorderRadius.circular(12),
+                child: const Padding(
+                  padding: EdgeInsets.all(2),
+                  child: Icon(
+                    Icons.settings_outlined,
+                    color: Color(0xFF78F2C0),
+                    size: 18,
+                  ),
+                ),
+              ),
+            ],
           )
         else
           const Padding(

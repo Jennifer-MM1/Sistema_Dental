@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:sistema_dental/features/wear/data/wear_data_service.dart';
-import 'package:sistema_dental/features/wear/presentation/wear_shell.dart';
 import 'package:sistema_dental/features/wear/presentation/wear_turn_screen.dart';
+import 'package:sistema_dental/features/wear/presentation/wear_shell.dart';
+import 'package:sistema_dental/core/wear/wear_link_service.dart';
+import 'package:sistema_dental/features/wear/presentation/wear_linked_empty_screen.dart';
 
-class WearWaitScreen extends StatelessWidget {
+class WearWaitScreen extends StatefulWidget {
   static const routeName = '/patient';
 
   final WearPatientQueueData data;
@@ -16,7 +18,42 @@ class WearWaitScreen extends StatelessWidget {
   });
 
   @override
+  State<WearWaitScreen> createState() => _WearWaitScreenState();
+}
+
+class _WearWaitScreenState extends State<WearWaitScreen> {
+  int _selectedFamilyIndex = 0;
+
+  // Citas familiares (Titular + Dependientes)
+  late final List<WearPatientQueueData> _familyAppointments;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.isDemo) {
+      _familyAppointments = [
+        widget.data, // Cita principal / Titular
+        const WearPatientQueueData(
+          patientName: 'Sofía (Hija)',
+          queueCode: 'C-05',
+          peopleAhead: 2,
+          estimatedMinutes: 25,
+          doctorName: 'Dra. Mendoza',
+          serviceName: 'Odontopediatría',
+          roomName: 'Consultorio 3',
+          status: 'upcoming',
+          dateTimeLabel: 'Hoy • 11:30 AM',
+        ),
+      ];
+    } else {
+      _familyAppointments = [widget.data];
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final currentData = _familyAppointments[_selectedFamilyIndex];
+
     return WearShell(
       child: LayoutBuilder(
         builder: (context, constraints) {
@@ -39,99 +76,174 @@ class WearWaitScreen extends StatelessWidget {
                   children: [
                     const WearTopBar(),
                     SizedBox(height: compact ? 3 : 5),
-                    const WearTitle('Estado de espera'),
-                    SizedBox(height: compact ? 7 : 10),
-                    Container(
-                      width: circleSize,
-                      height: circleSize,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: const Color(0xFF008ED1),
-                          width: compact ? 5 : 7,
+
+                    // NOMBRE DEL PACIENTE / FAMILIAR
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        if (_familyAppointments.length > 1)
+                          InkWell(
+                            onTap: () {
+                              setState(() {
+                                _selectedFamilyIndex =
+                                    (_selectedFamilyIndex + 1) %
+                                    _familyAppointments.length;
+                              });
+                            },
+                            child: const Icon(
+                              Icons.arrow_left,
+                              color: Color(0xFF78F2C0),
+                              size: 18,
+                            ),
+                          ),
+                        Flexible(
+                          child: Text(
+                            currentData.patientName.toUpperCase(),
+                            style: const TextStyle(
+                              color: Color(0xFF78F2C0),
+                              fontSize: 10,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 0.5,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                        if (_familyAppointments.length > 1)
+                          InkWell(
+                            onTap: () {
+                              setState(() {
+                                _selectedFamilyIndex =
+                                    (_selectedFamilyIndex + 1) %
+                                    _familyAppointments.length;
+                              });
+                            },
+                            child: const Icon(
+                              Icons.arrow_right,
+                              color: Color(0xFF78F2C0),
+                              size: 18,
+                            ),
+                          ),
+                      ],
+                    ),
+                    SizedBox(height: compact ? 4 : 6),
+
+                    // CÍRCULO CON NÚMERO DE PERSONAS EN ESPERA
+                      Container(
+                        width: circleSize,
+                        height: circleSize,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: const Color(0xFF008ED1),
+                            width: compact ? 5 : 7,
+                          ),
+                        ),
+                        child: Center(
+                          child: Text(
+                            '${currentData.peopleAhead}',
+                            style: TextStyle(
+                              fontSize: compact ? 22 : 32,
+                              fontWeight: FontWeight.w900,
+                              color: Colors.white,
+                              height: 1.0,
+                            ),
+                          ),
                         ),
                       ),
-                      child: Center(
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              '${data.peopleAhead}',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: compact ? 20 : 25,
-                                fontWeight: FontWeight.w800,
-                                height: 1,
-                              ),
-                            ),
-                            Text(
-                              'EN COLA',
-                              style: TextStyle(
-                                color: const Color(0xFF9AA4AD),
-                                fontSize: compact ? 6.5 : 8,
-                              ),
-                            ),
-                          ],
+                      const SizedBox(height: 4),
+                      Text(
+                        'EN ESPERA',
+                        style: TextStyle(
+                          fontSize: compact ? 7 : 9,
+                          fontWeight: FontWeight.w800,
+                          color: const Color(0xFFBFE4F7),
+                          letterSpacing: 0.8,
                         ),
                       ),
-                    ),
-                    SizedBox(height: compact ? 7 : 10),
+                    SizedBox(height: compact ? 6 : 10),
+
+                    // DETALLES DE LA CITA
                     Text(
-                      data.patientName,
+                      '${currentData.doctorName} • ${currentData.serviceName}',
                       textAlign: TextAlign.center,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
+                      style: const TextStyle(
                         color: Colors.white,
-                        fontSize: compact ? 11.5 : 14,
-                        fontWeight: FontWeight.w700,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
-                    SizedBox(height: compact ? 1 : 3),
+                    const SizedBox(height: 2),
                     Text(
-                      '${data.peopleAhead} personas antes de ti',
-                      textAlign: TextAlign.center,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: compact ? 9.5 : 11,
-                        fontWeight: FontWeight.w700,
+                      'Turno ${currentData.queueCode} • ~${currentData.estimatedMinutes} min',
+                      style: const TextStyle(
+                        color: Color(0xFF9E9E9E),
+                        fontSize: 9,
                       ),
                     ),
-                    SizedBox(height: compact ? 1 : 3),
-                    Text(
-                      'Tiempo est.: ${data.estimatedMinutes} min',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: const Color(0xFF7C858E),
-                        fontSize: compact ? 8.5 : 11,
-                      ),
-                    ),
-                    SizedBox(height: compact ? 6 : 14),
+                    SizedBox(height: compact ? 8 : 12),
+
                     SizedBox(
                       width: designWidth,
                       height: buttonHeight,
-                      child: FilledButton(
-                        onPressed: () => Navigator.push(
+                      child: OutlinedButton(
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => WearTurnScreen(
+                                data: currentData,
+                                isDemo: widget.isDemo,
+                              ),
+                            ),
+                          );
+                        },
+                        style: OutlinedButton.styleFrom(
+                          side: const BorderSide(color: Color(0xFF008ED1)),
+                          foregroundColor: const Color(0xFF008ED1),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        child: const Text(
+                          'VER FICHA COMPLETA',
+                          style: TextStyle(
+                            fontSize: 9,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    // Botón para ir a la vista resumen
+                    InkWell(
+                      onTap: () async {
+                        final data =
+                            await WearLinkService.instance.readCompanionState();
+                        if (!context.mounted) return;
+                        Navigator.push(
                           context,
                           MaterialPageRoute(
                             builder: (_) =>
-                                WearTurnScreen(data: data, isDemo: isDemo),
+                                WearLinkedEmptyScreen(summary: data?.summary),
                           ),
-                        ),
-                        style: FilledButton.styleFrom(
-                          backgroundColor: const Color(0xFFE9E7E5),
-                          foregroundColor: const Color(0xFF242424),
-                          padding: EdgeInsets.zero,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                        ),
-                        child: Text(
-                          'Ver Detalles',
-                          style: TextStyle(fontSize: compact ? 10 : 13),
+                        );
+                      },
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 4),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: const [
+                            Text(
+                              'Ver resumen',
+                              style: TextStyle(
+                                  color: Color(0xFF78F2C0), fontSize: 10),
+                            ),
+                            SizedBox(width: 4),
+                            Icon(Icons.arrow_forward_ios,
+                                color: Color(0xFF78F2C0), size: 10),
+                          ],
                         ),
                       ),
                     ),

@@ -9,6 +9,8 @@ class WearPatientQueueData {
   final String serviceName;
   final String roomName;
   final String status;
+  final String dateTimeLabel;
+  final bool hasReminder;
 
   const WearPatientQueueData({
     required this.patientName,
@@ -19,6 +21,8 @@ class WearPatientQueueData {
     required this.serviceName,
     required this.roomName,
     required this.status,
+    this.dateTimeLabel = 'Hoy • 10:30 AM',
+    this.hasReminder = false,
   });
 
   factory WearPatientQueueData.fromJson(Map<String, dynamic> json) {
@@ -31,6 +35,8 @@ class WearPatientQueueData {
       serviceName: json['service_name'] as String? ?? 'Consulta',
       roomName: json['room_name'] as String? ?? 'Consultorio',
       status: json['status'] as String? ?? 'upcoming',
+      dateTimeLabel: json['date_time_label'] as String? ?? 'Hoy • 10:30 AM',
+      hasReminder: json['has_reminder'] == true,
     );
   }
 
@@ -43,17 +49,21 @@ class WearPatientQueueData {
     'service_name': serviceName,
     'room_name': roomName,
     'status': status,
+    'date_time_label': dateTimeLabel,
+    'has_reminder': hasReminder,
   };
 
   static const demo = WearPatientQueueData(
     patientName: 'Paciente',
-    queueCode: 'Sin turno',
-    peopleAhead: 0,
-    estimatedMinutes: 0,
-    doctorName: 'Dentista',
-    serviceName: 'Consulta',
-    roomName: 'Consultorio',
+    queueCode: 'C-04',
+    peopleAhead: 1,
+    estimatedMinutes: 15,
+    doctorName: 'Dr. García',
+    serviceName: 'Limpieza Dental',
+    roomName: 'Consultorio 2',
     status: 'upcoming',
+    dateTimeLabel: 'Hoy • 10:30 AM',
+    hasReminder: false,
   );
 }
 
@@ -122,6 +132,7 @@ class WearPatientSummaryData {
   final int appointmentCount;
   final String? nextPatientName;
   final DateTime? nextAppointmentTime;
+  final List<WearPatientQueueData> appointments;
 
   const WearPatientSummaryData({
     required this.userName,
@@ -131,9 +142,16 @@ class WearPatientSummaryData {
     required this.appointmentCount,
     required this.nextPatientName,
     required this.nextAppointmentTime,
+    this.appointments = const [],
   });
 
   factory WearPatientSummaryData.fromJson(Map<String, dynamic> json) {
+    final rawList = json['appointments'] as List? ?? const [];
+    final appts = rawList
+        .whereType<Map>()
+        .map((m) => WearPatientQueueData.fromJson(Map<String, dynamic>.from(m)))
+        .toList();
+
     return WearPatientSummaryData(
       userName: json['user_name'] as String? ?? 'Cliente',
       email: json['email'] as String? ?? '',
@@ -146,6 +164,7 @@ class WearPatientSummaryData {
       nextAppointmentTime: DateTime.tryParse(
         json['next_appointment_time'] as String? ?? '',
       ),
+      appointments: appts,
     );
   }
 
@@ -157,9 +176,10 @@ class WearPatientSummaryData {
     'appointment_count': appointmentCount,
     'next_patient_name': nextPatientName,
     'next_appointment_time': nextAppointmentTime?.toIso8601String(),
+    'appointments': appointments.map((a) => a.toJson()).toList(),
   };
 
-  bool get hasAppointments => appointmentCount > 0;
+  bool get hasAppointments => appointmentCount > 0 || appointments.isNotEmpty;
 }
 
 class WearStartupData {
@@ -213,6 +233,15 @@ class WearStartupData {
       isLinked: json['is_linked'] != false,
     );
   }
+
+  Map<String, dynamic> toJson() => {
+        'role': role.name,
+        'patient_queue': patient?.toJson(),
+        'doctor_queue': doctor?.toJson(),
+        'secretary_queue': secretary?.toJson(),
+        'summary': summary?.toJson(),
+        'is_linked': isLinked,
+      };
 }
 
 int _asInt(dynamic value) {
