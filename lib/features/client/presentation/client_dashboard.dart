@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sistema_dental/core/theme/app_colors.dart';
@@ -13,6 +14,8 @@ import 'package:sistema_dental/features/client/presentation/widgets/patient_clin
 import 'package:sistema_dental/features/shared/presentation/user_profile_view.dart';
 import 'package:sistema_dental/core/models/appointment.dart';
 import 'package:intl/intl.dart';
+import 'package:qr_flutter/qr_flutter.dart';
+import 'package:sistema_dental/features/shared/presentation/widgets/floating_dock_nav_bar.dart';
 
 class ClientDashboard extends ConsumerStatefulWidget {
   const ClientDashboard({super.key});
@@ -69,9 +72,88 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
     }
   }
 
+  void _handleSync() {
+    ref.invalidate(clientAppointmentsProvider);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Row(
+          children: [
+            Icon(Icons.check_circle, color: Colors.white),
+            SizedBox(width: 8),
+            Text('Datos sincronizados.'),
+          ],
+        ),
+        backgroundColor: AppColors.success,
+        duration: Duration(seconds: 2),
+      ),
+    );
+  }
+
+  void _showPatientQrModal() {
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user == null) return;
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Mi Código QR de Check-in'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'Muestra este código QR al llegar a la clínica para registrar tu entrada en la sala de espera.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: Colors.grey.shade300),
+              ),
+              child: SizedBox(
+                width: 180,
+                height: 180,
+                child: QrImageView(
+                  data: user.id,
+                  version: QrVersions.auto,
+                  size: 180,
+                  eyeStyle: const QrEyeStyle(
+                    eyeShape: QrEyeShape.square,
+                    color: AppColors.primaryBlue,
+                  ),
+                  dataModuleStyle: const QrDataModuleStyle(
+                    dataModuleShape: QrDataModuleShape.square,
+                    color: AppColors.primaryBlue,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'ID: ${user.id.substring(0, 8).toUpperCase()}',
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cerrar'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final isDesktop = MediaQuery.of(context).size.width > 900;
+    final isMobileOrTablet = defaultTargetPlatform == TargetPlatform.android ||
+        defaultTargetPlatform == TargetPlatform.iOS ||
+        MediaQuery.of(context).size.width <= 1300;
+    final isDesktop = !isMobileOrTablet;
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: isDesktop
@@ -86,19 +168,54 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
                   fontWeight: FontWeight.bold,
                 ),
               ),
-            ),
-      drawer: isDesktop ? null : Drawer(child: _buildSidebar()),
-      body: Row(
-        children: [
-          if (isDesktop) _buildSidebar(),
-          Expanded(
-            child: Column(
-              children: [
-                if (isDesktop) _buildTopBar(),
-                Expanded(child: _buildBody()),
+              actions: [
+                IconButton(
+                  tooltip: 'Sincronizar datos',
+                  icon: const Icon(Icons.sync, color: AppColors.primaryBlue),
+                  onPressed: _handleSync,
+                ),
               ],
             ),
+      drawer: Drawer(child: _buildSidebar()),
+      body: Stack(
+        children: [
+          Row(
+            children: [
+              if (isDesktop) _buildSidebar(),
+              Expanded(
+                child: Column(
+                  children: [
+                    if (isDesktop) _buildTopBar(),
+                    Expanded(child: _buildBody()),
+                  ],
+                ),
+              ),
+            ],
           ),
+          if (!isDesktop)
+            FloatingDockNavBar(
+              selectedIndex: _selectedIndex,
+              onItemSelected: (index) => setState(() => _selectedIndex = index),
+              items: [
+                const DockItemData(
+                  icon: Icons.home_rounded,
+                  label: 'Inicio',
+                ),
+                DockItemData(
+                  icon: Icons.qr_code_2_rounded,
+                  label: 'Código QR',
+                  onTapOverride: _showPatientQrModal,
+                ),
+                const DockItemData(
+                  icon: Icons.medical_information_rounded,
+                  label: 'Historial',
+                ),
+                const DockItemData(
+                  icon: Icons.person_rounded,
+                  label: 'Perfil',
+                ),
+              ],
+            ),
         ],
       ),
     );
@@ -314,10 +431,15 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
   }
 
   Widget _buildBody() {
+    final isDesktop = MediaQuery.of(context).size.width > 1300;
+    final bottomPad = isDesktop ? 0.0 : 90.0;
+
+    Widget bodyContent;
     if (_selectedIndex == 1) {
-      return const ClientScheduleView();
+      bodyContent = const ClientScheduleView(key: ValueKey(1));
     } else if (_selectedIndex == 2) {
-      return const Column(
+      bodyContent = const Column(
+        key: ValueKey(2),
         children: [
           Padding(
             padding: EdgeInsets.fromLTRB(20, 20, 20, 0),
@@ -327,11 +449,24 @@ class _ClientDashboardState extends ConsumerState<ClientDashboard> {
         ],
       );
     } else if (_selectedIndex == 3) {
-      return const ClientProfileView();
+      bodyContent = const ClientProfileView(key: ValueKey(3));
+    } else {
+      bodyContent = const ClientHomeView(key: ValueKey(0));
     }
 
-    // Vista Home
-    return const ClientHomeView();
+    return Padding(
+      padding: EdgeInsets.only(bottom: bottomPad),
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 260),
+        switchInCurve: Curves.easeOut,
+        switchOutCurve: Curves.easeIn,
+        transitionBuilder: (child, animation) => FadeTransition(
+          opacity: animation,
+          child: child,
+        ),
+        child: bodyContent,
+      ),
+    );
   }
 
   void _showProfileHelp() {
@@ -364,16 +499,16 @@ class ClientHomeView extends ConsumerStatefulWidget {
 }
 
 class _ClientHomeViewState extends ConsumerState<ClientHomeView> {
-  Map<String, dynamic>? _nextAppointment;
+  List<Map<String, dynamic>> _upcomingAppointments = [];
   bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    _fetchNextAppointment();
+    _fetchUpcomingAppointments();
   }
 
-  Future<void> _fetchNextAppointment() async {
+  Future<void> _fetchUpcomingAppointments() async {
     final client = Supabase.instance.client;
     final user = client.auth.currentUser;
     if (user == null) return;
@@ -392,17 +527,15 @@ class _ClientHomeViewState extends ConsumerState<ClientHomeView> {
 
       final apptRes = await client
           .from('appointments')
-          .select('*, doctors(profiles(name)), services(service_name)')
+          .select('*, doctors(profiles(name)), services(service_name), patients(first_name, last_name)')
           .inFilter('patient_id', patientIds)
           .gte('date_time', DateTime.now().toUtc().toIso8601String())
           .order('date_time', ascending: true)
-          .limit(1);
+          .limit(10);
 
-      if (apptRes.isNotEmpty) {
-        _nextAppointment = apptRes[0];
-      }
+      _upcomingAppointments = apptRes;
     } catch (e) {
-      debugPrint('Error fetching next appointment: $e');
+      debugPrint('Error fetching upcoming appointments: $e');
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -412,16 +545,13 @@ class _ClientHomeViewState extends ConsumerState<ClientHomeView> {
   Widget build(BuildContext context) {
     final userAsync = ref.watch(currentUserProvider);
     final userName = userAsync.value?.name ?? 'Paciente';
-    final selectedPatient = ref.watch(selectedPatientProvider);
-    final displayFirstName =
-        selectedPatient?.firstName ?? userName.split(' ').first;
+    final displayFirstName = userName.split(' ').first;
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const PatientSelector(),
           Text(
             '¡Hola, $displayFirstName!',
             style: const TextStyle(
@@ -439,8 +569,23 @@ class _ClientHomeViewState extends ConsumerState<ClientHomeView> {
 
           if (_isLoading)
             const Center(child: CircularProgressIndicator())
-          else if (_nextAppointment != null)
-            _buildNextAppointmentCard(_nextAppointment!)
+          else if (_upcomingAppointments.isNotEmpty)
+            ...[
+              _buildNextAppointmentCard(_upcomingAppointments.first),
+              if (_upcomingAppointments.length > 1) ...[
+                const SizedBox(height: 24),
+                const Text(
+                  'Próximas citas familiares',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.primaryBlue,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                ..._upcomingAppointments.skip(1).map((appt) => _buildSecondaryAppointmentCard(appt)),
+              ]
+            ]
           else
             Container(
               padding: const EdgeInsets.all(20),
@@ -451,7 +596,7 @@ class _ClientHomeViewState extends ConsumerState<ClientHomeView> {
               ),
               child: const Center(
                 child: Text(
-                  'No tienes citas próximas.',
+                  'No hay citas próximas.',
                   style: TextStyle(color: Colors.grey),
                 ),
               ),
@@ -469,6 +614,7 @@ class _ClientHomeViewState extends ConsumerState<ClientHomeView> {
     final timeStr = DateFormat('HH:mm').format(date);
     final doctorName = appt['doctors']?['profiles']?['name'] ?? 'Doctor';
     final serviceName = appt['services']?['service_name'] ?? 'Consulta General';
+    final patientName = appt['patients']?['first_name'] ?? 'Paciente';
 
     return Container(
       padding: const EdgeInsets.all(20),
@@ -525,6 +671,11 @@ class _ClientHomeViewState extends ConsumerState<ClientHomeView> {
           ),
           const SizedBox(height: 4),
           Text(
+            'Para: $patientName',
+            style: const TextStyle(color: Colors.white, fontSize: 16),
+          ),
+          const SizedBox(height: 4),
+          Text(
             'Dr. $doctorName',
             style: const TextStyle(color: Colors.white, fontSize: 16),
           ),
@@ -539,6 +690,64 @@ class _ClientHomeViewState extends ConsumerState<ClientHomeView> {
               const SizedBox(width: 8),
               Text(timeStr, style: const TextStyle(color: Colors.white)),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSecondaryAppointmentCard(Map<String, dynamic> appt) {
+    final date = DateTime.parse(appt['date_time']).toLocal();
+    final dateStr = DateFormat('dd/MM/yyyy').format(date);
+    final timeStr = DateFormat('HH:mm').format(date);
+    final serviceName = appt['services']?['service_name'] ?? 'Consulta General';
+    final patientName = appt['patients']?['first_name'] ?? 'Paciente';
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: AppColors.lightBlueAccent,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Icon(Icons.medical_services, color: AppColors.primaryBlue),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  serviceName,
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                ),
+                Text(
+                  'Para: $patientName',
+                  style: const TextStyle(color: Colors.grey, fontSize: 14),
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    const Icon(Icons.calendar_today, size: 14, color: Colors.grey),
+                    const SizedBox(width: 4),
+                    Text(dateStr, style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                    const SizedBox(width: 12),
+                    const Icon(Icons.access_time, size: 14, color: Colors.grey),
+                    const SizedBox(width: 4),
+                    Text(timeStr, style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                  ],
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -828,7 +1037,7 @@ class _ClientScheduleViewState extends ConsumerState<ClientScheduleView> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                appointment.queueCode ?? 'Sin asignar',
+                appointment.displayQueueCode,
                 style: const TextStyle(
                   color: Colors.white,
                   fontSize: 48,
@@ -921,16 +1130,37 @@ class _ClientScheduleViewState extends ConsumerState<ClientScheduleView> {
     final time = DateFormat('HH:mm').format(appointment.dateTime);
     final doctor = appointment.doctorName ?? 'Doctor';
     final details = '${appointment.serviceName ?? 'Consulta'} • $time';
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.grey.shade100),
-      ),
-      child: Row(
-        children: [
-          Container(
+    
+    final statusColor = switch (appointment.status) {
+      'completed' => Colors.green,
+      'cancelled' => Colors.red,
+      'in_lobby' => Colors.purple,
+      'in_treatment' => Colors.orange,
+      _ => AppColors.primaryBlue,
+    };
+
+    final statusText = switch (appointment.status) {
+      'upcoming' => 'Programada',
+      'in_lobby' => 'En sala de espera',
+      'in_treatment' => 'Adentro',
+      'completed' => 'Completada',
+      'cancelled' => 'Cancelada',
+      _ => 'Desconocido',
+    };
+
+    return InkWell(
+      onTap: () => _showAppointmentDetails(appointment),
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.grey.shade100),
+        ),
+        child: Row(
+          children: [
+            Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
               color: AppColors.background,
@@ -977,9 +1207,84 @@ class _ClientScheduleViewState extends ConsumerState<ClientScheduleView> {
               ],
             ),
           ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: statusColor.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: statusColor.withValues(alpha: 0.5)),
+            ),
+            child: Text(
+              statusText,
+              style: TextStyle(
+                color: statusColor,
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
           const Icon(Icons.arrow_forward_ios, color: Colors.grey, size: 16),
         ],
       ),
+    ));
+  }
+
+  void _showAppointmentDetails(Appointment appointment) {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Detalles de la cita'),
+          content: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _detailRow('Paciente:', appointment.patientName ?? 'Paciente'),
+                const SizedBox(height: 8),
+                _detailRow('Doctor:', appointment.doctorName ?? 'Doctor'),
+                const SizedBox(height: 8),
+                _detailRow('Servicio:', appointment.serviceName ?? 'Consulta'),
+                const SizedBox(height: 16),
+                const Text(
+                  'Nota médica:',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  appointment.medicalNotes?.isNotEmpty == true
+                      ? appointment.medicalNotes!
+                      : 'No hay notas médicas para esta cita.',
+                  style: const TextStyle(color: Colors.black87),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cerrar'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _detailRow(String label, String value) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(value),
+        ),
+      ],
     );
   }
 }

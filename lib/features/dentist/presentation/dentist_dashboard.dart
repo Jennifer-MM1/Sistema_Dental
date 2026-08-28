@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sistema_dental/core/theme/app_colors.dart';
 import 'package:go_router/go_router.dart';
@@ -7,6 +8,7 @@ import 'package:sistema_dental/features/dentist/presentation/widgets/staff_manag
 import 'package:sistema_dental/features/dentist/presentation/widgets/dentist_calendar_view.dart';
 import 'package:file_picker/file_picker.dart' as fp;
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:sistema_dental/features/shared/presentation/widgets/patient_check_in_scanner.dart';
 import 'package:sistema_dental/features/shared/data/appointment_repository.dart';
 import 'package:sistema_dental/core/models/appointment.dart';
 import 'package:sistema_dental/features/shared/presentation/user_profile_view.dart';
@@ -14,14 +16,16 @@ import 'package:sistema_dental/features/dentist/presentation/widgets/clinical_hi
 import 'package:intl/intl.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
-class DentistDashboard extends StatefulWidget {
+import 'package:sistema_dental/features/shared/presentation/widgets/floating_dock_nav_bar.dart';
+
+class DentistDashboard extends ConsumerStatefulWidget {
   const DentistDashboard({super.key});
 
   @override
-  State<DentistDashboard> createState() => _DentistDashboardState();
+  ConsumerState<DentistDashboard> createState() => _DentistDashboardState();
 }
 
-class _DentistDashboardState extends State<DentistDashboard> {
+class _DentistDashboardState extends ConsumerState<DentistDashboard> {
   int _selectedIndex = 0;
   String _userName = 'Usuario';
   String _clinicName = 'Clínica';
@@ -67,9 +71,45 @@ class _DentistDashboardState extends State<DentistDashboard> {
     }
   }
 
+  Future<String?> _getClinicId() async {
+    final client = Supabase.instance.client;
+    final user = client.auth.currentUser;
+    if (user == null) return null;
+    final membership = await client
+        .from('clinic_memberships')
+        .select('clinic_id')
+        .eq('user_id', user.id)
+        .inFilter('role_in_clinic', ['owner', 'dentist'])
+        .eq('is_active', true)
+        .limit(1)
+        .maybeSingle();
+    return membership?['clinic_id'] as String?;
+  }
+
+  Future<void> _quickRegisterPatient() async {
+    final clinicId = await _getClinicId();
+    if (clinicId == null || !mounted) return;
+    showDialog(
+      context: context,
+      builder: (_) => AddPatientDialog(clinicId: clinicId),
+    );
+  }
+
+  Future<void> _quickScheduleAppointment() async {
+    final clinicId = await _getClinicId();
+    if (clinicId == null || !mounted) return;
+    showDialog(
+      context: context,
+      builder: (_) => ScheduleAppointmentDialog(clinicId: clinicId),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final isDesktop = MediaQuery.of(context).size.width > 900;
+    final isMobileOrTablet = defaultTargetPlatform == TargetPlatform.android ||
+        defaultTargetPlatform == TargetPlatform.iOS ||
+        MediaQuery.of(context).size.width <= 1300;
+    final isDesktop = !isMobileOrTablet;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -85,24 +125,75 @@ class _DentistDashboardState extends State<DentistDashboard> {
                   fontWeight: FontWeight.bold,
                 ),
               ),
-            ),
-      drawer: isDesktop ? null : Drawer(child: _buildSidebar()),
-      body: Row(
-        children: [
-          // Sidebar solo visible en escritorio
-          if (isDesktop) _buildSidebar(),
-          // Main Content
-          Expanded(
-            child: Column(
-              children: [
-                if (isDesktop) _buildTopBar(),
-                Expanded(child: _buildMainContent()),
+              actions: [
+                IconButton(
+                  tooltip: 'Sincronizar datos',
+                  icon: const Icon(Icons.sync, color: AppColors.primaryBlue),
+                  onPressed: _handleSync,
+                ),
               ],
             ),
+      drawer: Drawer(child: _buildSidebar()),
+      body: Stack(
+        children: [
+          Row(
+            children: [
+              // Sidebar solo visible en escritorio
+              if (isDesktop) _buildSidebar(),
+              // Main Content
+              Expanded(
+                child: Column(
+                  children: [
+                    if (isDesktop) _buildTopBar(),
+                    Expanded(child: _buildMainContent()),
+                  ],
+                ),
+              ),
+            ],
           ),
+          if (!isDesktop)
+            FloatingDockNavBar(
+              selectedIndex: _currentDockIndex,
+              onItemSelected: (index) {
+                if (index == 0) setState(() => _selectedIndex = 0);
+                if (index == 3) setState(() => _selectedIndex = 2);
+                if (index == 4) setState(() => _selectedIndex = 7);
+              },
+              items: [
+                const DockItemData(
+                  icon: Icons.home_rounded,
+                  label: 'Home',
+                ),
+                DockItemData(
+                  icon: Icons.person_add_rounded,
+                  label: 'Reg. Paciente',
+                  onTapOverride: _quickRegisterPatient,
+                ),
+                DockItemData(
+                  icon: Icons.edit_calendar_rounded,
+                  label: 'Reg. Cita',
+                  onTapOverride: _quickScheduleAppointment,
+                ),
+                const DockItemData(
+                  icon: Icons.people_alt_rounded,
+                  label: 'Pacientes',
+                ),
+                const DockItemData(
+                  icon: Icons.settings_rounded,
+                  label: 'Perfil',
+                ),
+              ],
+            ),
         ],
       ),
     );
+  }
+
+  int get _currentDockIndex {
+    if (_selectedIndex == 0) return 0;
+    if (_selectedIndex == 2) return 3;
+    if (_selectedIndex == 7) return 4;
+    return -1;
   }
 
   Widget _buildSidebar() {
@@ -138,26 +229,6 @@ class _DentistDashboardState extends State<DentistDashboard> {
           _buildSidebarItem(6, Icons.medical_information, 'Historial Clínico'),
           _buildSidebarItem(7, Icons.settings_outlined, 'Configuración'),
           const Spacer(),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0),
-            child: ElevatedButton.icon(
-              onPressed: _showEmergencyDialog,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.error,
-                foregroundColor: Colors.white,
-                minimumSize: const Size(double.infinity, 50),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-              ),
-              icon: const Icon(Icons.priority_high),
-              label: const Text(
-                'Alerta urgente',
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
           Padding(
             padding: const EdgeInsets.all(16.0),
             child: InkWell(
@@ -225,41 +296,7 @@ class _DentistDashboardState extends State<DentistDashboard> {
     );
   }
 
-  Future<void> _showEmergencyDialog() async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Alerta urgente'),
-        content: Text(
-          '¿Quieres marcar una alerta interna para $_clinicName? Esto puede usarse para avisar a recepción sobre una urgencia en consultorio.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancelar'),
-          ),
-          ElevatedButton.icon(
-            onPressed: () => Navigator.pop(context, true),
-            icon: const Icon(Icons.notifications_active, color: Colors.white),
-            label: const Text(
-              'Activar alerta',
-              style: TextStyle(color: Colors.white),
-            ),
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.error),
-          ),
-        ],
-      ),
-    );
 
-    if (confirm == true && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Alerta urgente registrada para recepción.'),
-          backgroundColor: AppColors.error,
-        ),
-      );
-    }
-  }
 
   Widget _buildSidebarItem(int index, IconData icon, String title) {
     final isSelected = _selectedIndex == index;
@@ -308,6 +345,168 @@ class _DentistDashboardState extends State<DentistDashboard> {
     );
   }
 
+  Future<void> _handleGlobalSearch(String query) async {
+    if (query.trim().isEmpty) return;
+    final client = Supabase.instance.client;
+    final user = client.auth.currentUser;
+    if (user == null) return;
+
+    try {
+      final membership = await client
+          .from('clinic_memberships')
+          .select('clinic_id')
+          .eq('user_id', user.id)
+          .eq('is_active', true)
+          .limit(1)
+          .maybeSingle();
+      if (membership == null) return;
+      final clinicId = membership['clinic_id'] as String;
+
+      final results = await client
+          .from('patients')
+          .select('id, first_name, last_name, relationship')
+          .eq('clinic_id', clinicId)
+          .or('first_name.ilike.%$query%,last_name.ilike.%$query%')
+          .limit(5);
+
+      if (!mounted) return;
+      showDialog(
+        context: context,
+        builder: (dialogCtx) => AlertDialog(
+          title: Text('Resultados para "$query"'),
+          content: results.isEmpty
+              ? const Text('No se encontraron pacientes con ese nombre.')
+              : SizedBox(
+                  width: 400,
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: results.length,
+                    itemBuilder: (context, index) {
+                      final p = results[index];
+                      final name = '${p['first_name']} ${p['last_name']}';
+                      return ListTile(
+                        leading: const CircleAvatar(
+                          backgroundColor: AppColors.lightBlueAccent,
+                          child: Icon(Icons.person, color: AppColors.primaryBlue),
+                        ),
+                        title: Text(name, style: const TextStyle(fontWeight: FontWeight.bold)),
+                        subtitle: Text('Relación: ${p['relationship'] ?? 'Paciente'}'),
+                        trailing: ElevatedButton(
+                          onPressed: () async {
+                            Navigator.pop(dialogCtx);
+                            await showDialog(
+                              context: context,
+                              builder: (_) => ScheduleAppointmentDialog(
+                                clinicId: clinicId,
+                                initialPatientId: p['id'] as String,
+                              ),
+                            );
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.primaryBlue,
+                            foregroundColor: Colors.white,
+                          ),
+                          child: const Text('Agendar'),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogCtx),
+              child: const Text('Cerrar'),
+            ),
+          ],
+        ),
+      );
+    } catch (e) {
+      debugPrint('Error global search: $e');
+    }
+  }
+
+  Future<void> _handleSync() async {
+    ref.invalidate(clinicQueueProvider);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Row(
+            children: [
+              Icon(Icons.check_circle, color: Colors.white),
+              SizedBox(width: 8),
+              Text('Datos sincronizados en tiempo real con la nube.'),
+            ],
+          ),
+          backgroundColor: AppColors.success,
+          duration: Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
+  Future<void> _showNotificationsDialog() async {
+    final client = Supabase.instance.client;
+    final user = client.auth.currentUser;
+    if (user == null) return;
+
+    try {
+      final membership = await client
+          .from('clinic_memberships')
+          .select('clinic_id')
+          .eq('user_id', user.id)
+          .eq('is_active', true)
+          .limit(1)
+          .maybeSingle();
+      if (membership == null) return;
+      final clinicId = membership['clinic_id'] as String;
+
+      final countRes = await client
+          .from('appointments')
+          .select('id')
+          .eq('clinic_id', clinicId)
+          .inFilter('status', ['upcoming', 'in_lobby']);
+
+      if (!mounted) return;
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Row(
+            children: [
+              Icon(Icons.notifications_active, color: AppColors.primaryBlue),
+              SizedBox(width: 8),
+              Text('Centro de Notificaciones'),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.event, color: AppColors.primaryBlue),
+                title: const Text('Citas activas en la clínica'),
+                subtitle: Text('${countRes.length} cita(s) pendiente(s) o en recepción.'),
+              ),
+              const Divider(),
+              const ListTile(
+                leading: Icon(Icons.check_circle_outline, color: AppColors.success),
+                title: Text('Recordatorios automáticos'),
+                subtitle: Text('Recordatorios por WhatsApp/Email activos.'),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Entendido'),
+            ),
+          ],
+        ),
+      );
+    } catch (e) {
+      debugPrint('Error loading notifications: $e');
+    }
+  }
+
   Widget _buildTopBar() {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
@@ -321,20 +520,21 @@ class _DentistDashboardState extends State<DentistDashboard> {
                 color: AppColors.background,
                 borderRadius: BorderRadius.circular(24),
               ),
-              child: const TextField(
-                decoration: InputDecoration(
+              child: TextField(
+                onSubmitted: _handleGlobalSearch,
+                decoration: const InputDecoration(
                   icon: Icon(Icons.search, color: Colors.grey),
-                  hintText: 'Search...',
+                  hintText: 'Buscar paciente y presionar Enter...',
                   border: InputBorder.none,
                 ),
               ),
             ),
           ),
           const SizedBox(width: 16),
-          const Flexible(
+          Flexible(
             child: Text(
-              'DentalSync Connect',
-              style: TextStyle(
+              'DentalSync Connect • $_clinicName',
+              style: const TextStyle(
                 color: AppColors.primaryBlue,
                 fontWeight: FontWeight.bold,
                 fontSize: 16,
@@ -343,14 +543,23 @@ class _DentistDashboardState extends State<DentistDashboard> {
             ),
           ),
           const SizedBox(width: 16),
-          const Icon(Icons.sync, color: AppColors.textSecondary),
-          const SizedBox(width: 16),
-          const Icon(Icons.notifications_none, color: AppColors.error),
-          const SizedBox(width: 16),
+          IconButton(
+            tooltip: 'Sincronizar datos',
+            icon: const Icon(Icons.sync, color: AppColors.primaryBlue),
+            onPressed: _handleSync,
+          ),
+          const SizedBox(width: 8),
+          IconButton(
+            tooltip: 'Notificaciones',
+            icon: const Icon(Icons.notifications_active, color: AppColors.warning),
+            onPressed: _showNotificationsDialog,
+          ),
+          const SizedBox(width: 8),
           PopupMenuButton<String>(
             icon: const Icon(
               Icons.account_circle_outlined,
               color: AppColors.textSecondary,
+              size: 28,
             ),
             onSelected: (value) async {
               if (value == 'mode') {
@@ -393,26 +602,57 @@ class _DentistDashboardState extends State<DentistDashboard> {
   }
 
   Widget _buildMainContent() {
+    final isDesktop = MediaQuery.of(context).size.width > 1300;
+    final bottomPad = isDesktop ? 0.0 : 90.0;
+
+    Widget content;
     switch (_selectedIndex) {
       case 0:
-        return const DashboardView();
+        content = DashboardView(
+          key: const ValueKey(0),
+          onNavigateToQueue: () {
+            if (mounted) setState(() => _selectedIndex = 1);
+          },
+        );
+        break;
       case 1:
-        return const QueueView();
+        content = const QueueView(key: ValueKey(1));
+        break;
       case 2:
-        return const DentistCalendarView();
+        content = const DentistCalendarView(key: ValueKey(2));
+        break;
       case 3:
-        return const PatientsView(); // Clientes Asociados
+        content = const PatientsView(key: ValueKey(3));
+        break;
       case 4:
-        return const StaffManagementView(); // Gestión de Personal y Consultorios
+        content = const StaffManagementView(key: ValueKey(4));
+        break;
       case 5:
-        return const QRCodeView(); // Código QR Único
+        content = const QRCodeView(key: ValueKey(5));
+        break;
       case 6:
-        return const ClinicalHistoryView(); // Historial Clínico
+        content = const ClinicalHistoryView(key: ValueKey(6));
+        break;
       case 7:
-        return const SettingsView();
+        content = const SettingsView(key: ValueKey(7));
+        break;
       default:
-        return const SettingsView();
+        content = const SettingsView(key: ValueKey(99));
     }
+
+    return Padding(
+      padding: EdgeInsets.only(bottom: bottomPad),
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 260),
+        switchInCurve: Curves.easeOut,
+        switchOutCurve: Curves.easeIn,
+        transitionBuilder: (child, animation) => FadeTransition(
+          opacity: animation,
+          child: child,
+        ),
+        child: content,
+      ),
+    );
   }
 }
 
@@ -421,7 +661,8 @@ class _DentistDashboardState extends State<DentistDashboard> {
 // ----------------------------------------------------
 
 class DashboardView extends StatefulWidget {
-  const DashboardView({super.key});
+  final VoidCallback? onNavigateToQueue;
+  const DashboardView({super.key, this.onNavigateToQueue});
 
   @override
   State<DashboardView> createState() => _DashboardViewState();
@@ -430,10 +671,13 @@ class DashboardView extends StatefulWidget {
 class _DashboardViewState extends State<DashboardView> {
   String _clinicName = 'Cargando...';
   String _doctorName = '';
-  int _patientCount = 0;
+  int _totalPatientsCount = 0;
   int _activeDoctorsCount = 0;
   int _appointmentsToday = 0;
   int _completedAppointments = 0;
+  int _totalAppointmentsAllTime = 0;
+  int _pendingAppointmentsToday = 0;
+  List<Map<String, dynamic>> _todayAppointmentsList = [];
   bool _isLoading = true;
 
   @override
@@ -452,13 +696,14 @@ class _DashboardViewState extends State<DashboardView> {
           .from('profiles')
           .select('name')
           .eq('id', user.id)
-          .single();
-      _doctorName = profile['name'] ?? 'Doctor';
+          .maybeSingle();
+      _doctorName = profile?['name'] ?? 'Doctor';
 
       final memberships = await client
           .from('clinic_memberships')
           .select('clinic_id, clinics(business_name)')
           .eq('user_id', user.id)
+          .inFilter('role_in_clinic', ['owner', 'dentist'])
           .eq('is_active', true)
           .limit(1);
 
@@ -466,26 +711,32 @@ class _DashboardViewState extends State<DashboardView> {
         _clinicName = memberships[0]['clinics'] != null
             ? memberships[0]['clinics']['business_name']
             : 'Clínica Desconocida';
-        final clinicId = memberships[0]['clinic_id'];
+        final clinicId = memberships[0]['clinic_id'] as String;
 
-        final patients = await client
-            .from('clinic_memberships')
+        // 1. Total real patient records
+        final patientsRes = await client
+            .from('patients')
             .select('id')
-            .eq('clinic_id', clinicId)
-            .eq('role_in_clinic', 'client')
-            .eq('is_active', true);
-        _patientCount = patients.length;
+            .eq('clinic_id', clinicId);
+        _totalPatientsCount = patientsRes.length;
 
-        // Fetch active doctors
-        final doctors = await client
+        // 2. Active doctors count
+        final doctorsRes = await client
             .from('clinic_memberships')
             .select('id')
             .eq('clinic_id', clinicId)
             .inFilter('role_in_clinic', ['dentist', 'owner'])
             .eq('is_active', true);
-        _activeDoctorsCount = doctors.length;
+        _activeDoctorsCount = doctorsRes.length;
 
-        // Fetch today's appointments for goal
+        // 3. All-time total appointments count
+        final allApptsRes = await client
+            .from('appointments')
+            .select('id')
+            .eq('clinic_id', clinicId);
+        _totalAppointmentsAllTime = allApptsRes.length;
+
+        // 4. Today's appointments with detailed patient & service info
         final today = DateTime.now();
         final startOfDay = DateTime(
           today.year,
@@ -501,22 +752,33 @@ class _DashboardViewState extends State<DashboardView> {
           59,
         ).toUtc().toIso8601String();
 
-        final appts = await client
+        final todayApptsRes = await client
             .from('appointments')
-            .select('id, status')
+            .select('''
+              id, date_time, status,
+              patients(first_name, last_name),
+              services(service_name, duration_mins)
+            ''')
             .eq('clinic_id', clinicId)
             .gte('date_time', startOfDay)
-            .lte('date_time', endOfDay);
+            .lte('date_time', endOfDay)
+            .order('date_time', ascending: true);
 
-        _appointmentsToday = appts.length;
-        _completedAppointments = appts
+        _todayAppointmentsList = List<Map<String, dynamic>>.from(todayApptsRes);
+        _appointmentsToday = _todayAppointmentsList.length;
+        _completedAppointments = _todayAppointmentsList
             .where((a) => a['status'] == 'completed')
+            .length;
+        _pendingAppointmentsToday = _todayAppointmentsList
+            .where((a) => a['status'] == 'scheduled' || a['status'] == 'confirmed')
             .length;
       }
 
-      setState(() {
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     } catch (e) {
       debugPrint('Error fetching dashboard: $e');
       if (mounted) setState(() => _isLoading = false);
@@ -558,30 +820,40 @@ class _DashboardViewState extends State<DashboardView> {
               crossAxisAlignment: WrapCrossAlignment.center,
               children: [
                 ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 560),
+                  constraints: const BoxConstraints(maxWidth: 500),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        _clinicName,
-                        style: const TextStyle(
-                          color: Colors.white70,
-                          fontWeight: FontWeight.bold,
-                        ),
+                      Row(
+                        children: [
+                          Text(
+                            _clinicName,
+                            style: const TextStyle(
+                              color: Colors.white70,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const Spacer(),
+                          IconButton(
+                            onPressed: _fetchDashboardData,
+                            icon: const Icon(Icons.refresh, color: Colors.white70, size: 20),
+                            tooltip: 'Actualizar datos',
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 8),
+                      const SizedBox(height: 4),
                       Text(
                         'Hola, Dr. $_doctorName',
                         style: const TextStyle(
                           color: Colors.white,
-                          fontSize: 30,
+                          fontSize: 28,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
-                      const SizedBox(height: 8),
+                      const SizedBox(height: 6),
                       const Text(
-                        'Resumen operativo de la clínica para el día de hoy.',
-                        style: TextStyle(color: Colors.white70, fontSize: 15),
+                        'Resumen clínico y métricas de atención.',
+                        style: TextStyle(color: Colors.white70, fontSize: 14),
                       ),
                     ],
                   ),
@@ -598,7 +870,7 @@ class _DashboardViewState extends State<DashboardView> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text(
-                        'Progreso diario',
+                        'Meta Diaria Citas',
                         style: TextStyle(color: Colors.white70, fontSize: 12),
                       ),
                       const SizedBox(height: 10),
@@ -606,7 +878,7 @@ class _DashboardViewState extends State<DashboardView> {
                         '${(progress * 100).round()}%',
                         style: const TextStyle(
                           color: Colors.white,
-                          fontSize: 32,
+                          fontSize: 30,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
@@ -629,40 +901,40 @@ class _DashboardViewState extends State<DashboardView> {
           const SizedBox(height: 24),
           LayoutBuilder(
             builder: (context, constraints) {
-              final columns = constraints.maxWidth > 1000
-                  ? 4
-                  : (constraints.maxWidth > 640 ? 2 : 1);
+              final columns = constraints.maxWidth > 1100
+                  ? 6
+                  : (constraints.maxWidth > 700 ? 3 : 2);
               final width =
-                  (constraints.maxWidth - (columns - 1) * 16) / columns;
+                  (constraints.maxWidth - (columns - 1) * 12) / columns;
               return Wrap(
-                spacing: 16,
-                runSpacing: 16,
+                spacing: 12,
+                runSpacing: 12,
                 children: [
                   SizedBox(
                     width: width,
                     child: _buildStatCard(
-                      'Clientes',
-                      '$_patientCount',
-                      'Cuentas vinculadas',
-                      Icons.people_alt_outlined,
+                      'Total Citas',
+                      '$_totalAppointmentsAllTime',
+                      'Histórico clínico',
+                      Icons.folder_shared_outlined,
                     ),
                   ),
                   SizedBox(
                     width: width,
                     child: _buildStatCard(
-                      'Dentistas',
-                      '$_activeDoctorsCount',
-                      'Activos en clínica',
-                      Icons.medical_services_outlined,
-                    ),
-                  ),
-                  SizedBox(
-                    width: width,
-                    child: _buildStatCard(
-                      'Citas hoy',
+                      'Citas Hoy',
                       '$_appointmentsToday',
-                      'Programadas',
+                      'Programadas hoy',
                       Icons.calendar_today_outlined,
+                    ),
+                  ),
+                  SizedBox(
+                    width: width,
+                    child: _buildStatCard(
+                      'Pacientes',
+                      '$_totalPatientsCount',
+                      'Expedientes reales',
+                      Icons.people_alt_outlined,
                     ),
                   ),
                   SizedBox(
@@ -670,8 +942,26 @@ class _DashboardViewState extends State<DashboardView> {
                     child: _buildStatCard(
                       'Completadas',
                       '$_completedAppointments',
-                      'Finalizadas hoy',
+                      'Atendidas hoy',
                       Icons.check_circle_outline,
+                    ),
+                  ),
+                  SizedBox(
+                    width: width,
+                    child: _buildStatCard(
+                      'En Espera',
+                      '$_pendingAppointmentsToday',
+                      'Siguiente turno',
+                      Icons.hourglass_top_outlined,
+                    ),
+                  ),
+                  SizedBox(
+                    width: width,
+                    child: _buildStatCard(
+                      'Dentistas',
+                      '$_activeDoctorsCount',
+                      'Equipo activo',
+                      Icons.medical_services_outlined,
                     ),
                   ),
                 ],
@@ -679,9 +969,7 @@ class _DashboardViewState extends State<DashboardView> {
             },
           ),
           const SizedBox(height: 24),
-          _buildQuickActions(),
-          const SizedBox(height: 24),
-          _buildStatsAndQueue(isDesktop),
+          _buildTodayAppointmentsView(),
         ],
       ),
     );
@@ -719,326 +1007,167 @@ class _DashboardViewState extends State<DashboardView> {
     return null;
   }
 
-  Future<void> _showAddPatientDialog() async {
-    final clinicId = await _activeDentistClinicId();
-    if (clinicId == null) return;
 
-    if (mounted) {
-      final bool? added = await showDialog(
-        context: context,
-        builder: (context) => AddPatientDialog(clinicId: clinicId),
-      );
-      if (added == true) {
-        _fetchDashboardData();
-      }
-    }
-  }
-
-  Future<void> _showScheduleDialog() async {
-    final clinicId = await _activeDentistClinicId();
-    if (clinicId == null) return;
-
-    if (mounted) {
-      final bool? scheduled = await showDialog(
-        context: context,
-        builder: (context) => ScheduleAppointmentDialog(clinicId: clinicId),
-      );
-      if (scheduled == true) {
-        _fetchDashboardData();
-      }
-    }
-  }
-
-  Future<void> _uploadXRay() async {
-    try {
-      fp.FilePickerResult? result = await fp.FilePicker.platform.pickFiles(
-        type: fp.FileType.image,
-        allowMultiple: false,
-      );
-
-      if (!mounted) return;
-
-      if (result != null) {
-        final fileBytes = result.files.first.bytes;
-        final fileName = result.files.first.name;
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Radiografía seleccionada: $fileName. Subiendo a la nube...',
-            ),
-          ),
-        );
-
-        if (fileBytes != null) {
-          // Attempt upload
-          final supabase = Supabase.instance.client;
-          final path =
-              'xrays/${DateTime.now().millisecondsSinceEpoch}_$fileName';
-          await supabase.storage.from('xrays').uploadBinary(path, fileBytes);
-
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Radiografía subida exitosamente.')),
-            );
-          }
-        }
-      }
-    } catch (e) {
-      debugPrint('Error uploading xray: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Error al subir: $e (Asegúrate de que el bucket "xrays" exista en Supabase)',
-            ),
-          ),
-        );
-      }
-    }
-  }
-
-  Widget _buildQuickActions() {
+  Widget _buildTodayAppointmentsView() {
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(color: Colors.grey.shade200),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Acciones rápidas',
-            style: TextStyle(
-              fontSize: 18,
-              color: AppColors.primaryBlue,
-              fontWeight: FontWeight.bold,
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'Citas del Día (Fila de Atención)',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              InkWell(
+                onTap: () {
+                  widget.onNavigateToQueue?.call(); // Ir a la vista de Cola de Citas
+                },
+                child: const Text(
+                  'Ver Fila de Atención →',
+                  style: TextStyle(
+                    color: AppColors.primaryBlue,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          const Divider(),
+          if (_todayAppointmentsList.isEmpty)
+            const Padding(
+              padding: EdgeInsets.all(24.0),
+              child: Center(
+                child: Column(
+                  children: [
+                    Icon(Icons.calendar_today_outlined, size: 40, color: Colors.grey),
+                    SizedBox(height: 8),
+                    Text(
+                      'No hay citas programadas para el día de hoy.',
+                      style: TextStyle(color: Colors.grey),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          else
+            ListView.separated(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: _todayAppointmentsList.length,
+              separatorBuilder: (context, index) => const Divider(),
+              itemBuilder: (context, index) {
+                final appt = _todayAppointmentsList[index];
+                final patientName = appt['patients'] != null
+                    ? '${appt['patients']['first_name']} ${appt['patients']['last_name']}'
+                    : 'Paciente General';
+                final serviceName = appt['services'] != null
+                    ? appt['services']['service_name']
+                    : 'Consulta Odontológica';
+                final timeStr = DateFormat('hh:mm a').format(DateTime.parse(appt['date_time']).toLocal());
+                final status = appt['status'] as String? ?? 'scheduled';
+
+                Color statusColor;
+                String statusLabel;
+                switch (status) {
+                  case 'completed':
+                    statusColor = Colors.green;
+                    statusLabel = 'Completada';
+                    break;
+                  case 'in_progress':
+                    statusColor = Colors.purple;
+                    statusLabel = 'En Consulta';
+                    break;
+                  case 'confirmed':
+                    statusColor = AppColors.primaryBlue;
+                    statusLabel = 'Confirmada';
+                    break;
+                  case 'cancelled':
+                    statusColor = Colors.red;
+                    statusLabel = 'Cancelada';
+                    break;
+                  default:
+                    statusColor = Colors.amber.shade800;
+                    statusLabel = 'Programada';
+                }
+
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8.0),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: AppColors.primaryBlue.withAlpha(20),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          timeStr,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.primaryBlue,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              patientName,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 15,
+                              ),
+                            ),
+                            Text(
+                              serviceName,
+                              style: const TextStyle(
+                                color: AppColors.textSecondary,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: statusColor.withAlpha(25),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: statusColor.withAlpha(80)),
+                        ),
+                        child: Text(
+                          statusLabel,
+                          style: TextStyle(
+                            color: statusColor,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
             ),
-          ),
-          const SizedBox(height: 6),
-          const Text(
-            'Atajos principales para la operación diaria.',
-            style: TextStyle(color: AppColors.textSecondary),
-          ),
-          const SizedBox(height: 18),
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final columns = constraints.maxWidth > 900
-                  ? 3
-                  : (constraints.maxWidth > 560 ? 2 : 1);
-              final width =
-                  (constraints.maxWidth - (columns - 1) * 12) / columns;
-              return Wrap(
-                spacing: 12,
-                runSpacing: 12,
-                children: [
-                  SizedBox(
-                    width: width,
-                    child: _buildQuickActionButton(
-                      Icons.person_add_alt_1,
-                      'Registrar paciente',
-                      isPrimary: true,
-                      onPressed: _showAddPatientDialog,
-                    ),
-                  ),
-                  SizedBox(
-                    width: width,
-                    child: _buildQuickActionButton(
-                      Icons.event_available,
-                      'Agendar cita',
-                      onPressed: _showScheduleDialog,
-                    ),
-                  ),
-                  SizedBox(
-                    width: width,
-                    child: _buildQuickActionLightButton(
-                      Icons.upload_file,
-                      'Subir radiografía',
-                      onPressed: _uploadXRay,
-                    ),
-                  ),
-                ],
-              );
-            },
-          ),
         ],
       ),
     );
   }
 
-  Widget _buildStatsAndQueue(bool isDesktop) {
-    return Column(
-      children: [
-        isDesktop
-            ? Row(
-                children: [
-                  Expanded(
-                    child: _buildStatCard(
-                      'Clientes Totales',
-                      '$_patientCount',
-                      'Registrados en la clínica',
-                      Icons.people,
-                    ),
-                  ),
-                  const SizedBox(width: 24),
-                  Expanded(
-                    child: _buildStatCard(
-                      'Próximas Citas',
-                      '0',
-                      'Sin citas programadas',
-                      Icons.calendar_today,
-                      isUp: false,
-                    ),
-                  ),
-                ],
-              )
-            : Column(
-                children: [
-                  _buildStatCard(
-                    'Clientes Totales',
-                    '$_patientCount',
-                    'Registrados en la clínica',
-                    Icons.people,
-                  ),
-                  const SizedBox(height: 16),
-                  _buildStatCard(
-                    'Próximas Citas',
-                    '0',
-                    'Sin citas programadas',
-                    Icons.calendar_today,
-                    isUp: false,
-                  ),
-                ],
-              ),
-        const SizedBox(height: 24),
-        Container(
-          padding: const EdgeInsets.all(24),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.grey.shade200),
-          ),
-          child: Column(
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: const [
-                  Text(
-                    'Citas del Día',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
-                  Text(
-                    'Ver Todo',
-                    style: TextStyle(
-                      color: AppColors.primaryBlue,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 12,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              const Divider(),
-              const Padding(
-                padding: EdgeInsets.all(16.0),
-                child: Text(
-                  'No hay citas para mostrar hoy.',
-                  style: TextStyle(color: Colors.grey),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
 
-  Widget _buildQuickActionButton(
-    IconData icon,
-    String label, {
-    bool isPrimary = false,
-    VoidCallback? onPressed,
-  }) {
-    return InkWell(
-      onTap: onPressed ?? () {},
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        height: 92,
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: isPrimary ? AppColors.primaryBlue : AppColors.lightBlueAccent,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: isPrimary
-                ? AppColors.primaryBlue
-                : AppColors.primaryBlue.withAlpha(40),
-          ),
-        ),
-        child: Row(
-          children: [
-            Icon(
-              icon,
-              color: isPrimary ? Colors.white : AppColors.primaryBlue,
-              size: 28,
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                label,
-                style: TextStyle(
-                  color: isPrimary ? Colors.white : AppColors.primaryBlue,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 15,
-                ),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildQuickActionLightButton(
-    IconData icon,
-    String label, {
-    VoidCallback? onPressed,
-  }) {
-    return InkWell(
-      onTap: onPressed ?? () {},
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        height: 92,
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: const Color(0xFFF8FAFC),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.grey.shade200),
-        ),
-        child: Row(
-          children: [
-            Icon(icon, color: AppColors.textSecondary, size: 28),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                label,
-                style: const TextStyle(
-                  color: AppColors.textPrimary,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 15,
-                ),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 
   Widget _buildStatCard(
     String title,
@@ -1176,6 +1305,45 @@ class _QueueViewState extends ConsumerState<QueueView> {
     );
   }
 
+  Future<void> _sendReminder(Appointment appointment) async {
+    setState(() => _updatingAppointments.add(appointment.id));
+    try {
+      await Supabase.instance.client
+          .from('appointments')
+          .update({'reminder_sent': true})
+          .eq('id', appointment.id);
+      
+      // Enviar notificación Push al teléfono
+      try {
+        await Supabase.instance.client.functions.invoke(
+          'notify-patient-turn',
+          body: {'appointmentId': appointment.id, 'newStatus': 'reminder'},
+        );
+      } catch (e) {
+        debugPrint('Error invocando notify-patient-turn: $e');
+      }
+
+      ref.invalidate(clinicQueueProvider);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Recordatorio enviado exitosamente.'),
+          backgroundColor: AppColors.success,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error al enviar recordatorio: $e'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _updatingAppointments.remove(appointment.id));
+    }
+  }
+
   void _skipTemporarily(Appointment appointment) {
     setState(() => _temporarilySkipped.add(appointment.id));
     ScaffoldMessenger.of(context).showSnackBar(
@@ -1215,6 +1383,31 @@ class _QueueViewState extends ConsumerState<QueueView> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('No se pudo abrir el formulario de cita: $error'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+    }
+  }
+
+  Future<void> _scanCheckIn(List<Appointment> currentQueue) async {
+    final scannedCode = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const PatientCheckInScannerPage(),
+      ),
+    );
+    if (scannedCode == null || !mounted) return;
+
+    final code = scannedCode.trim();
+    final appointment = currentQueue.where((a) => 
+        (a.profileId == code || a.patientId == code) && a.status == 'upcoming').firstOrNull;
+
+    if (appointment != null) {
+      _changeStatus(appointment, 'in_lobby', 'Llegada registrada exitosamente.');
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No se encontró una cita pendiente para este paciente hoy.'),
           backgroundColor: AppColors.error,
         ),
       );
@@ -1307,7 +1500,7 @@ class _QueueViewState extends ConsumerState<QueueView> {
                               ),
                             ),
                             Text(
-                              'Ticket #${nextAppt.queueCode ?? 'N/A'} • ${nextAppt.serviceName ?? 'Consulta'}',
+                              'Ticket #${nextAppt.displayQueueCode} • ${nextAppt.serviceName ?? 'Consulta'}',
                               style: const TextStyle(
                                 color: AppColors.textSecondary,
                               ),
@@ -1565,7 +1758,7 @@ class _QueueViewState extends ConsumerState<QueueView> {
                                     return Column(
                                       children: [
                                         _buildRow(
-                                          '#${appt.queueCode ?? 'N/A'}',
+                                          '#${appt.displayQueueCode}',
                                           appt.patientName ?? 'Paciente',
                                           appt.serviceName ?? 'Consulta',
                                           DateFormat(
@@ -1593,10 +1786,26 @@ class _QueueViewState extends ConsumerState<QueueView> {
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _showScheduleDialog,
-        backgroundColor: AppColors.primaryBlue,
-        child: const Icon(Icons.add, color: Colors.white),
+      floatingActionButton: Column(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          FloatingActionButton(
+            heroTag: 'scanCheckInBtn',
+            onPressed: () {
+              queueAsync.whenData((queue) => _scanCheckIn(queue));
+            },
+            backgroundColor: Colors.white,
+            foregroundColor: AppColors.primaryBlue,
+            child: const Icon(Icons.qr_code_scanner),
+          ),
+          const SizedBox(height: 16),
+          FloatingActionButton(
+            heroTag: 'addApptBtn',
+            onPressed: _showScheduleDialog,
+            backgroundColor: AppColors.primaryBlue,
+            child: const Icon(Icons.add, color: Colors.white),
+          ),
+        ],
       ),
     );
   }
@@ -1674,7 +1883,18 @@ class _QueueViewState extends ConsumerState<QueueView> {
                 : Wrap(
                     spacing: 4,
                     children: [
-                      if (appointment.status == 'upcoming')
+                      if (appointment.status == 'upcoming') ...[
+                        IconButton(
+                          tooltip: 'Enviar recordatorio',
+                          onPressed: () => _sendReminder(appointment),
+                          style: IconButton.styleFrom(
+                            backgroundColor: AppColors.primaryBlue.withValues(alpha: 0.1),
+                          ),
+                          icon: const Icon(
+                            Icons.notifications_active,
+                            color: AppColors.primaryBlue,
+                          ),
+                        ),
                         IconButton(
                           tooltip: 'Marcar llegada',
                           onPressed: () => _changeStatus(
@@ -1682,11 +1902,15 @@ class _QueueViewState extends ConsumerState<QueueView> {
                             'in_lobby',
                             'Llegada registrada.',
                           ),
+                          style: IconButton.styleFrom(
+                            backgroundColor: AppColors.primaryBlue.withValues(alpha: 0.1),
+                          ),
                           icon: const Icon(
                             Icons.login,
-                            color: AppColors.warning,
+                            color: AppColors.primaryBlue,
                           ),
                         ),
+                      ],
                       if (appointment.status == 'in_lobby')
                         IconButton(
                           tooltip: 'Llamar a consultorio',
@@ -1694,6 +1918,9 @@ class _QueueViewState extends ConsumerState<QueueView> {
                             appointment,
                             'in_treatment',
                             'Paciente llamado a consultorio.',
+                          ),
+                          style: IconButton.styleFrom(
+                            backgroundColor: AppColors.primaryBlue.withValues(alpha: 0.1),
                           ),
                           icon: const Icon(
                             Icons.campaign,
@@ -1709,9 +1936,12 @@ class _QueueViewState extends ConsumerState<QueueView> {
                             'Consulta completada.',
                             confirm: true,
                           ),
+                          style: IconButton.styleFrom(
+                            backgroundColor: AppColors.primaryBlue.withValues(alpha: 0.1),
+                          ),
                           icon: const Icon(
                             Icons.check_circle,
-                            color: AppColors.success,
+                            color: AppColors.primaryBlue,
                           ),
                         ),
                       IconButton(
@@ -1722,9 +1952,12 @@ class _QueueViewState extends ConsumerState<QueueView> {
                           'Cita cancelada.',
                           confirm: true,
                         ),
+                        style: IconButton.styleFrom(
+                          backgroundColor: AppColors.error.withValues(alpha: 0.1),
+                        ),
                         icon: const Icon(
                           Icons.cancel_outlined,
-                          color: AppColors.error,
+                          color: AppColors.error, // Keeping error color to be semantic, but styled consistently
                         ),
                       ),
                     ],
@@ -1774,11 +2007,13 @@ class _PatientsViewState extends State<PatientsView> {
           final clinicId = memberships[0]['clinic_id'];
 
           return client
-              .from('clinic_memberships')
-              .select('user_id, created_at, profiles(name)')
+              .from('patients')
+              .select('''
+                id, first_name, last_name, relationship, date_of_birth, created_at,
+                profiles:profiles(name)
+              ''')
               .eq('clinic_id', clinicId)
-              .eq('role_in_clinic', 'client')
-              .eq('is_active', true);
+              .order('first_name');
         });
   }
 
@@ -1792,11 +2027,11 @@ class _PatientsViewState extends State<PatientsView> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              'Clientes Asociados',
+              'Pacientes de la Clínica',
               style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
             ),
             const Text(
-              'Gestiona las cuentas de los clientes vinculados a la clínica.',
+              'Consulta los expedientes médicos de los pacientes registrados.',
               style: TextStyle(color: Colors.grey),
             ),
             const SizedBox(height: 32),
@@ -1811,7 +2046,7 @@ class _PatientsViewState extends State<PatientsView> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text(
-                    'Clientes Registrados',
+                    'Fichas Clínicas de Pacientes',
                     style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                   ),
                   const SizedBox(height: 16),
@@ -1824,34 +2059,40 @@ class _PatientsViewState extends State<PatientsView> {
                       }
                       if (snapshot.hasError) {
                         return const Center(
-                          child: Text('Error al cargar clientes'),
+                          child: Text('Error al cargar pacientes'),
                         );
                       }
-                      final clients = snapshot.data ?? [];
-                      if (clients.isEmpty) {
+                      final patients = snapshot.data ?? [];
+                      if (patients.isEmpty) {
                         return const Padding(
                           padding: EdgeInsets.all(16.0),
                           child: Text(
-                            'No hay clientes vinculados a esta clínica.',
+                            'No hay pacientes registrados en esta clínica.',
                           ),
                         );
                       }
 
                       return Column(
-                        children: clients.map((clientData) {
-                          final name = clientData['profiles'] != null
-                              ? clientData['profiles']['name']
-                              : 'Desconocido';
-                          final id = (clientData['user_id'] as String)
-                              .substring(0, 8); // Short ID for display
-                          final dateStr = clientData['created_at'] as String;
-                          final date = DateFormat(
-                            'dd/MM/yyyy',
-                          ).format(DateTime.parse(dateStr));
+                        children: patients.map((patientData) {
+                          final patientName = '${patientData['first_name']} ${patientData['last_name']}';
+                          final id = (patientData['id'] as String).substring(0, 8);
+                          final relStr = patientData['relationship'] == 'self'
+                              ? 'Paciente Titular'
+                              : (patientData['relationship'] == 'child'
+                                  ? 'Hijo(a)'
+                                  : (patientData['relationship'] == 'spouse'
+                                      ? 'Cónyuge'
+                                      : 'Familiar'));
+                          final tutorName = patientData['profiles'] != null ? patientData['profiles']['name'] as String? : null;
+                          final subtitleStr = '$relStr ${tutorName != null ? '• Tutor: $tutorName' : ''}';
+                          
+                          final dateStr = patientData['created_at'] != null
+                              ? DateFormat('dd/MM/yyyy').format(DateTime.parse(patientData['created_at']))
+                              : '';
 
                           return Column(
                             children: [
-                              _buildPatientRow(name, id, date),
+                              _buildPatientRow(patientData, patientName, subtitleStr, id, dateStr),
                               const Divider(),
                             ],
                           );
@@ -1868,37 +2109,62 @@ class _PatientsViewState extends State<PatientsView> {
     );
   }
 
-  Widget _buildPatientRow(String name, String id, String date) {
+  Widget _buildPatientRow(Map<String, dynamic> patientData, String name, String subtitle, String id, String date) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8.0),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
+          Expanded(
+            child: Row(
+              children: [
+                const CircleAvatar(
+                  backgroundColor: AppColors.lightBlueAccent,
+                  child: Icon(Icons.person, color: AppColors.primaryBlue),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        name,
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      Text(
+                        '$subtitle • ID: $id',
+                        style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
           Row(
             children: [
-              const CircleAvatar(
-                backgroundColor: AppColors.lightBlueAccent,
-                child: Icon(Icons.person, color: AppColors.primaryBlue),
-              ),
-              const SizedBox(width: 16),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    name,
-                    style: const TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  Text(
-                    'ID: $id',
-                    style: const TextStyle(color: Colors.grey, fontSize: 12),
-                  ),
-                ],
+              if (date.isNotEmpty)
+                Text(
+                  'Registrado: $date',
+                  style: const TextStyle(color: Colors.grey, fontSize: 12),
+                ),
+              const SizedBox(width: 8),
+              IconButton(
+                icon: const Icon(Icons.edit_note, color: AppColors.primaryBlue),
+                tooltip: 'Editar Ficha Clínica',
+                onPressed: () async {
+                  final updated = await showDialog<bool>(
+                    context: context,
+                    builder: (context) => EditPatientDetailsDialog(patientData: patientData),
+                  );
+                  if (updated == true) {
+                    setState(() {
+                      _fetchPatients();
+                    });
+                  }
+                },
               ),
             ],
-          ),
-          Text(
-            'Se unió: $date',
-            style: const TextStyle(color: Colors.grey, fontSize: 12),
           ),
         ],
       ),

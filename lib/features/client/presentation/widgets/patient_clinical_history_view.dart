@@ -4,6 +4,7 @@ import 'package:sistema_dental/core/theme/app_colors.dart';
 import 'package:sistema_dental/core/models/clinical_note.dart';
 import 'package:sistema_dental/features/dentist/data/clinical_repository.dart';
 import 'package:sistema_dental/features/dentist/presentation/widgets/odontogram_widget.dart';
+import 'package:sistema_dental/core/models/prescription.dart';
 import 'package:sistema_dental/features/shared/data/prescription_pdf_generator.dart';
 import 'package:sistema_dental/features/client/data/patient_repository.dart';
 import 'package:intl/intl.dart';
@@ -21,6 +22,7 @@ class PatientClinicalHistoryView extends ConsumerStatefulWidget {
 class _PatientClinicalHistoryViewState
     extends ConsumerState<PatientClinicalHistoryView> {
   List<ClinicalNote> _notes = [];
+  List<Prescription> _prescriptions = [];
   bool _isLoading = true;
   String _patientName = '';
   String? _patientDob;
@@ -38,6 +40,7 @@ class _PatientClinicalHistoryViewState
       if (mounted) {
         setState(() {
           _notes = [];
+          _prescriptions = [];
           _patientName = '';
           _patientDob = null;
           _isLoading = false;
@@ -54,6 +57,7 @@ class _PatientClinicalHistoryViewState
 
     final repo = ref.read(clinicalRepositoryProvider);
     _notes = await repo.getNotesForPatient(selectedPatient.id);
+    _prescriptions = await repo.getPrescriptionsForPatient(selectedPatient.id);
 
     if (mounted) setState(() => _isLoading = false);
   }
@@ -163,6 +167,9 @@ class _PatientClinicalHistoryViewState
     final dateStr = note.createdAt != null
         ? DateFormat('dd/MM/yyyy').format(note.createdAt!)
         : 'Sin fecha';
+    
+    final doctor = note.doctorName != null ? 'Dr(a). ${note.doctorName}' : 'Doctor no especificado';
+    final hasPrescription = _prescriptions.any((p) => p.clinicalNoteId == note.id);
 
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
@@ -171,19 +178,73 @@ class _PatientClinicalHistoryViewState
         borderRadius: BorderRadius.circular(16),
         side: BorderSide(color: Colors.grey.shade200),
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+      child: Theme(
+        data: Theme.of(context).copyWith(
+          dividerColor: Colors.transparent,
+          splashColor: Colors.transparent,
+          highlightColor: Colors.transparent,
+        ),
+        child: ExpansionTile(
+          tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          childrenPadding: const EdgeInsets.only(left: 16, right: 16, bottom: 16),
+          title: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                decoration: BoxDecoration(
+                  color: AppColors.background,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(
+                  Icons.medical_information,
+                  color: AppColors.primaryBlue,
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      doctor,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      dateStr,
+                      style: const TextStyle(color: Colors.grey, fontSize: 14),
+                    ),
+                  ],
+                ),
+              ),
+              if (hasPrescription)
+                Container(
+                  margin: const EdgeInsets.only(right: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: AppColors.success.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(
+                    Icons.description_outlined,
+                    color: AppColors.success,
+                    size: 16,
+                  ),
+                ),
+            ],
+          ),
           children: [
-            // Fecha y doctor
+            const Divider(height: 1),
+            const SizedBox(height: 16),
+            // Fecha y doctor expandido
             Row(
               children: [
                 Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 4,
-                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
                     color: AppColors.primaryBlue.withAlpha(26),
                     borderRadius: BorderRadius.circular(8),
@@ -191,11 +252,7 @@ class _PatientClinicalHistoryViewState
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(
-                        Icons.calendar_today,
-                        size: 14,
-                        color: AppColors.primaryBlue,
-                      ),
+                      const Icon(Icons.calendar_today, size: 14, color: AppColors.primaryBlue),
                       const SizedBox(width: 4),
                       Text(
                         dateStr,
@@ -215,62 +272,95 @@ class _PatientClinicalHistoryViewState
                       'Dr(a). ${note.doctorName}',
                       style: TextStyle(
                         fontSize: 12,
-                        color: Colors.grey.shade500,
+                        color: Colors.grey.shade600,
                       ),
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
                 ],
                 const Spacer(),
-                // Botón de receta
-                TextButton.icon(
-                  onPressed: () => _showPrescription(note),
-                  icon: const Icon(Icons.description_outlined, size: 16),
-                  label: const Text('Ver receta'),
-                  style: TextButton.styleFrom(
-                    foregroundColor: AppColors.success,
-                    textStyle: const TextStyle(fontSize: 12),
+                // Botón de receta condicional
+                if (hasPrescription)
+                  TextButton.icon(
+                    onPressed: () => _showPrescription(note),
+                    icon: const Icon(Icons.description_outlined, size: 16),
+                    label: const Text('Ver receta'),
+                    style: TextButton.styleFrom(
+                      foregroundColor: AppColors.success,
+                      textStyle: const TextStyle(fontSize: 12),
+                    ),
                   ),
-                ),
               ],
             ),
-            const SizedBox(height: 12),
-
+            const SizedBox(height: 16),
+            
             // Diagnóstico
             if (note.diagnosis != null && note.diagnosis!.isNotEmpty) ...[
-              _buildLabel('Diagnóstico'),
-              const SizedBox(height: 2),
-              Text(note.diagnosis!, style: const TextStyle(fontSize: 14)),
-              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildLabel('Diagnóstico'),
+                    const SizedBox(height: 4),
+                    Text(note.diagnosis!, style: const TextStyle(fontSize: 14)),
+                    const SizedBox(height: 12),
+                  ],
+                ),
+              ),
             ],
 
             // Tratamiento
             if (note.treatmentPerformed != null &&
                 note.treatmentPerformed!.isNotEmpty) ...[
-              _buildLabel('Tratamiento'),
-              const SizedBox(height: 2),
-              Text(
-                note.treatmentPerformed!,
-                style: const TextStyle(fontSize: 14),
+              SizedBox(
+                width: double.infinity,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildLabel('Tratamiento Realizado'),
+                    const SizedBox(height: 4),
+                    Text(
+                      note.treatmentPerformed!,
+                      style: const TextStyle(fontSize: 14),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+                ),
               ),
-              const SizedBox(height: 10),
             ],
 
             // Observaciones
             if (note.observations != null && note.observations!.isNotEmpty) ...[
-              _buildLabel('Observaciones'),
-              const SizedBox(height: 2),
-              Text(note.observations!, style: const TextStyle(fontSize: 14)),
-              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildLabel('Observaciones'),
+                    const SizedBox(height: 4),
+                    Text(note.observations!, style: const TextStyle(fontSize: 14)),
+                    const SizedBox(height: 12),
+                  ],
+                ),
+              ),
             ],
 
             // Dientes
             if (note.toothNumbers.isNotEmpty) ...[
-              _buildLabel('Dientes tratados'),
-              const SizedBox(height: 8),
-              OdontogramWidget(
-                selectedTeeth: note.toothNumbers,
-                readOnly: true,
+              SizedBox(
+                width: double.infinity,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildLabel('Dientes tratados'),
+                    const SizedBox(height: 8),
+                    OdontogramWidget(
+                      selectedTeeth: note.toothNumbers,
+                      readOnly: true,
+                    ),
+                  ],
+                ),
               ),
             ],
           ],

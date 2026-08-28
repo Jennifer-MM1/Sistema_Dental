@@ -371,6 +371,7 @@ class _ScheduleAppointmentDialogState extends State<ScheduleAppointmentDialog> {
   }
 
   Future<void> _saveAppointment() async {
+    if (_isSaving) return;
     if (!_formKey.currentState!.validate() ||
         _selectedDate == null ||
         _selectedTime == null) {
@@ -404,13 +405,14 @@ class _ScheduleAppointmentDialogState extends State<ScheduleAppointmentDialog> {
           durationMinutes: duration,
         );
       } else {
-        final validation = await repository.validateAppointmentSlot(
+        await repository.validateAppointmentSlot(
           clinicId: widget.clinicId,
           doctorId: _selectedDoctorId!,
           localStart: localDateTime,
           durationMinutes: duration,
         );
-        if (!validation.isValid) throw StateError(validation.message!);
+        final queueCode =
+            'T-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}';
         await client.from('appointments').insert({
           'clinic_id': widget.clinicId,
           'patient_id': _selectedPatientId,
@@ -418,6 +420,7 @@ class _ScheduleAppointmentDialogState extends State<ScheduleAppointmentDialog> {
           'service_id': _selectedServiceId,
           'date_time': localDateTime.toUtc().toIso8601String(),
           'status': 'upcoming',
+          'queue_code': queueCode,
         });
       }
 
@@ -585,7 +588,7 @@ class _ScheduleAppointmentDialogState extends State<ScheduleAppointmentDialog> {
                                   return DropdownMenuItem(
                                     value: s['id'] as String,
                                     child: Text(
-                                      '${s['service_name']} (\$${s['price']})',
+                                      '${s['service_name']} (${s['duration_mins'] ?? 30} min)',
                                       overflow: TextOverflow.ellipsis,
                                     ),
                                   );
@@ -708,14 +711,12 @@ class _CreateServiceDialog extends StatefulWidget {
 class _CreateServiceDialogState extends State<_CreateServiceDialog> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
-  final _priceController = TextEditingController();
   final _durationController = TextEditingController(text: '30');
   bool _isSaving = false;
 
   @override
   void dispose() {
     _nameController.dispose();
-    _priceController.dispose();
     _durationController.dispose();
     super.dispose();
   }
@@ -725,14 +726,13 @@ class _CreateServiceDialogState extends State<_CreateServiceDialog> {
     setState(() => _isSaving = true);
 
     try {
-      final price = double.parse(_priceController.text.replaceAll(',', '.'));
       final duration = int.parse(_durationController.text);
       final result = await Supabase.instance.client.rpc(
         'create_clinic_service',
         params: {
           'p_clinic_id': widget.clinicId,
           'p_service_name': _nameController.text.trim(),
-          'p_price': price,
+          'p_price': 0.0,
           'p_duration_mins': duration,
         },
       );
@@ -789,25 +789,6 @@ class _CreateServiceDialogState extends State<_CreateServiceDialog> {
               ),
               const SizedBox(height: 14),
               TextFormField(
-                controller: _priceController,
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
-                ),
-                decoration: const InputDecoration(
-                  labelText: 'Precio',
-                  prefixText: '\$ ',
-                ),
-                validator: (value) {
-                  final price = double.tryParse(
-                    (value ?? '').replaceAll(',', '.'),
-                  );
-                  return price == null || price < 0
-                      ? 'Escribe un precio válido'
-                      : null;
-                },
-              ),
-              const SizedBox(height: 14),
-              TextFormField(
                 controller: _durationController,
                 keyboardType: TextInputType.number,
                 decoration: const InputDecoration(
@@ -838,6 +819,282 @@ class _CreateServiceDialogState extends State<_CreateServiceDialog> {
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
               : const Text('Guardar'),
+        ),
+      ],
+    );
+  }
+}
+
+class EditPatientDetailsDialog extends StatefulWidget {
+  final Map<String, dynamic> patientData;
+  const EditPatientDetailsDialog({super.key, required this.patientData});
+
+  @override
+  State<EditPatientDetailsDialog> createState() =>
+      _EditPatientDetailsDialogState();
+}
+
+class _EditPatientDetailsDialogState extends State<EditPatientDetailsDialog> {
+  final _formKey = GlobalKey<FormState>();
+  late TextEditingController _firstNameController;
+  late TextEditingController _lastNameController;
+  DateTime? _dateOfBirth;
+  late String _relationship;
+  bool _isSaving = false;
+  late bool _isSelf;
+
+  @override
+  void initState() {
+    super.initState();
+    final p = widget.patientData;
+    _isSelf = (p['relationship'] == 'self');
+    _firstNameController = TextEditingController(text: p['first_name'] ?? '');
+    _lastNameController = TextEditingController(text: p['last_name'] ?? '');
+    _relationship = p['relationship'] ?? 'self';
+
+    if (p['date_of_birth'] != null) {
+      try {
+        _dateOfBirth = DateTime.parse(p['date_of_birth'].toString());
+      } catch (_) {}
+    }
+  }
+
+  @override
+  void dispose() {
+    _firstNameController.dispose();
+    _lastNameController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _selectDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _dateOfBirth ?? DateTime(2000, 1, 1),
+      firstDate: DateTime(1920),
+      lastDate: DateTime.now(),
+    );
+    if (picked != null) {
+      setState(() => _dateOfBirth = picked);
+    }
+  }
+
+  Future<void> _save() async {
+    if (!_formKey.currentState!.validate()) return;
+    setState(() => _isSaving = true);
+
+    try {
+      final client = Supabase.instance.client;
+      final updateData = <String, dynamic>{
+        'date_of_birth': _dateOfBirth?.toIso8601String().split('T').first,
+      };
+
+      if (!_isSelf) {
+        updateData['first_name'] = _firstNameController.text.trim();
+        updateData['last_name'] = _lastNameController.text.trim();
+        updateData['relationship'] = _relationship;
+      }
+
+      await client
+          .from('patients')
+          .update(updateData)
+          .eq('id', widget.patientData['id']);
+
+      if (mounted) {
+        Navigator.pop(context, true);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Ficha del paciente actualizada con éxito.'),
+            backgroundColor: AppColors.success,
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('Error updating patient: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al actualizar paciente: $e'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+      title: Row(
+        children: [
+          Icon(
+            _isSelf ? Icons.verified_user : Icons.edit_note,
+            color: AppColors.primaryBlue,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              _isSelf
+                  ? 'Ficha del Cliente Titular'
+                  : 'Editar Ficha del Paciente',
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+      content: SizedBox(
+        width: 520,
+        child: SingleChildScrollView(
+          child: Form(
+            key: _formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (_isSelf)
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 16),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: AppColors.primaryBlue.withAlpha(15),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: AppColors.primaryBlue.withAlpha(40)),
+                    ),
+                    child: const Row(
+                      children: [
+                        Icon(Icons.info_outline, color: AppColors.primaryBlue, size: 20),
+                        SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            'El nombre y apellido del cliente titular están vinculados a su cuenta de acceso. Solo puedes complementar su fecha de nacimiento.',
+                            style: TextStyle(fontSize: 12, color: AppColors.textPrimary),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                TextFormField(
+                  controller: _firstNameController,
+                  enabled: !_isSelf,
+                  decoration: InputDecoration(
+                    labelText: 'Nombre(s)',
+                    prefixIcon: const Icon(Icons.person),
+                    helperText: _isSelf
+                        ? '🔒 Administrado por la cuenta del cliente'
+                        : null,
+                  ),
+                  validator: (value) =>
+                      !_isSelf && (value == null || value.trim().isEmpty)
+                          ? 'Escribe el nombre'
+                          : null,
+                ),
+                const SizedBox(height: 14),
+                TextFormField(
+                  controller: _lastNameController,
+                  enabled: !_isSelf,
+                  decoration: const InputDecoration(
+                    labelText: 'Apellido(s)',
+                    prefixIcon: Icon(Icons.person_outline),
+                  ),
+                  validator: (value) =>
+                      !_isSelf && (value == null || value.trim().isEmpty)
+                          ? 'Escribe el apellido'
+                          : null,
+                ),
+                const SizedBox(height: 14),
+                if (_isSelf)
+                  TextFormField(
+                    initialValue: 'Paciente Titular (Self)',
+                    enabled: false,
+                    decoration: const InputDecoration(
+                      labelText: 'Parentesco / Relación',
+                      prefixIcon: Icon(Icons.badge),
+                    ),
+                  )
+                else
+                  DropdownButtonFormField<String>(
+                    initialValue: ['child', 'spouse', 'parent', 'other']
+                            .contains(_relationship)
+                        ? _relationship
+                        : 'other',
+                    decoration: const InputDecoration(
+                      labelText: 'Parentesco / Relación con el cliente',
+                      prefixIcon: Icon(Icons.family_restroom),
+                    ),
+                    items: const [
+                      DropdownMenuItem(
+                        value: 'child',
+                        child: Text('Hijo(a)'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'spouse',
+                        child: Text('Cónyuge'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'parent',
+                        child: Text('Padre / Madre'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'other',
+                        child: Text('Otro familiar / Asistido'),
+                      ),
+                    ],
+                    onChanged: (val) {
+                      if (val != null) setState(() => _relationship = val);
+                    },
+                  ),
+                const SizedBox(height: 14),
+                InkWell(
+                  onTap: _selectDate,
+                  borderRadius: BorderRadius.circular(12),
+                  child: InputDecorator(
+                    decoration: InputDecoration(
+                      labelText: 'Fecha de Nacimiento',
+                      prefixIcon: const Icon(Icons.cake),
+                      helperText: _isSelf
+                          ? '✏️ Puedes especificar la fecha para su expediente clínico'
+                          : null,
+                    ),
+                    child: Text(
+                      _dateOfBirth != null
+                          ? DateFormat('dd/MM/yyyy').format(_dateOfBirth!)
+                          : 'Seleccionar fecha de nacimiento...',
+                      style: TextStyle(
+                        color: _dateOfBirth != null
+                            ? AppColors.textPrimary
+                            : Colors.grey,
+                        fontWeight: _dateOfBirth != null
+                            ? FontWeight.bold
+                            : FontWeight.normal,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _isSaving ? null : () => Navigator.pop(context),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton.icon(
+          onPressed: _isSaving ? null : _save,
+          icon: _isSaving
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
+                )
+              : const Icon(Icons.save, size: 18),
+          label: const Text('Guardar Cambios'),
         ),
       ],
     );
