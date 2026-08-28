@@ -7,6 +7,10 @@ import 'package:sistema_dental/core/models/prescription.dart';
 import 'package:sistema_dental/features/dentist/data/clinical_repository.dart';
 import 'package:sistema_dental/features/dentist/presentation/widgets/odontogram_widget.dart';
 import 'package:sistema_dental/features/shared/data/prescription_pdf_generator.dart';
+import 'package:file_picker/file_picker.dart' as fp;
+import 'package:sistema_dental/core/models/clinical_attachment.dart';
+import 'package:sistema_dental/features/dentist/data/clinical_attachment_repository.dart';
+import 'package:sistema_dental/features/shared/data/clinical_history_pdf_generator.dart';
 import 'package:intl/intl.dart';
 
 /// Vista de Historial Clínico para el panel del dentista.
@@ -27,6 +31,9 @@ class _ClinicalHistoryViewState extends ConsumerState<ClinicalHistoryView> {
   List<Map<String, dynamic>> _filteredPatients = [];
   Map<String, dynamic>? _selectedPatient;
   List<ClinicalNote> _notes = [];
+  List<Map<String, dynamic>> _patientAppointments = [];
+  List<ClinicalAttachment> _attachments = [];
+  int _selectedTab = 0; // 0: Notas clínicas, 1: Citas agendadas, 2: Radiografías y Estudios
   bool _isLoading = true;
   bool _isLoadingNotes = false;
   final _searchController = TextEditingController();
@@ -70,7 +77,99 @@ class _ClinicalHistoryViewState extends ConsumerState<ClinicalHistoryView> {
     setState(() => _isLoadingNotes = true);
     final repo = ref.read(clinicalRepositoryProvider);
     _notes = await repo.getNotesForPatientInClinic(patientId, _clinicId);
+
+    try {
+      final client = Supabase.instance.client;
+      final appts = await client
+          .from('appointments')
+          .select('*, doctors(profiles(name)), services(service_name, duration_mins)')
+          .eq('patient_id', patientId)
+          .order('date_time', ascending: false);
+      _patientAppointments = List<Map<String, dynamic>>.from(appts);
+    } catch (e) {
+      debugPrint('Error loading patient appointments: $e');
+    }
+
+    try {
+      final attachmentRepo = ref.read(clinicalAttachmentRepositoryProvider);
+      _attachments = await attachmentRepo.getAttachmentsForPatient(patientId);
+    } catch (e) {
+      debugPrint('Error loading patient attachments: $e');
+      _attachments = [];
+    }
+
     if (mounted) setState(() => _isLoadingNotes = false);
+  }
+
+  Future<void> _uploadAttachmentForSelectedPatient() async {
+    final patient = _selectedPatient;
+    if (patient == null) return;
+    final patientId = patient['id'] as String;
+
+    try {
+      fp.FilePickerResult? result = await fp.FilePicker.platform.pickFiles(
+        type: fp.FileType.custom,
+        allowedExtensions: ['jpg', 'jpeg', 'png', 'pdf', 'webp'],
+        allowMultiple: false,
+      );
+
+      if (result == null || result.files.isEmpty || !mounted) return;
+
+      final fileBytes = result.files.first.bytes;
+      final fileName = result.files.first.name;
+
+      if (fileBytes == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No se pudieron leer los datos del archivo seleccionado.'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Subiendo $fileName para ${patient['first_name']}...'),
+        ),
+      );
+
+      final attachmentRepo = ref.read(clinicalAttachmentRepositoryProvider);
+      final attachment = await attachmentRepo.uploadAttachment(
+        patientId: patientId,
+        fileName: fileName,
+        bytes: fileBytes,
+      );
+
+      if (mounted) {
+        if (attachment != null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Radiografía/Estudio guardado y asociado exitosamente al expediente.'),
+              backgroundColor: AppColors.success,
+            ),
+          );
+          _loadNotesForPatient(patientId);
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('No se pudo completar el registro del archivo en la nube.'),
+              backgroundColor: AppColors.error,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('Error uploading attachment: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al subir radiografía: $e'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    }
   }
 
   void _filterPatients(String query) {
@@ -204,41 +303,53 @@ class _ClinicalHistoryViewState extends ConsumerState<ClinicalHistoryView> {
                       final name =
                           '${patient['first_name']} ${patient['last_name']}';
 
-                      return ListTile(
-                        leading: CircleAvatar(
-                          backgroundColor: isSelected
-                              ? AppColors.primaryBlue
-                              : AppColors.lightBlueAccent,
-                          child: Text(
-                            name[0].toUpperCase(),
-                            style: TextStyle(
-                              color: isSelected
-                                  ? Colors.white
-                                  : AppColors.primaryBlue,
-                              fontWeight: FontWeight.bold,
+                      final tutorName = patient['profiles'] != null ? patient['profiles']['name'] as String? : null;
+                      final relStr = patient['relationship'] == 'self'
+                          ? 'Paciente Titular'
+                          : (patient['relationship'] == 'child'
+                              ? 'Hijo(a) ${tutorName != null ? '• Tutor: $tutorName' : ''}'
+                              : (patient['relationship'] == 'spouse'
+                                  ? 'Cónyuge ${tutorName != null ? '• Tutor: $tutorName' : ''}'
+                                  : 'Familiar ${tutorName != null ? '• Tutor: $tutorName' : ''}'));
+
+                      return Material(
+                        color: Colors.transparent,
+                        child: ListTile(
+                          leading: CircleAvatar(
+                            backgroundColor: isSelected
+                                ? AppColors.primaryBlue
+                                : AppColors.lightBlueAccent,
+                            child: Text(
+                              name[0].toUpperCase(),
+                              style: TextStyle(
+                                color: isSelected
+                                    ? Colors.white
+                                    : AppColors.primaryBlue,
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
                           ),
-                        ),
-                        title: Text(
-                          name,
-                          style: TextStyle(
-                            fontWeight: isSelected
-                                ? FontWeight.bold
-                                : FontWeight.normal,
+                          title: Text(
+                            name,
+                            style: TextStyle(
+                              fontWeight: isSelected
+                                  ? FontWeight.bold
+                                  : FontWeight.normal,
+                            ),
                           ),
+                          subtitle: Text(
+                            patient['date_of_birth'] != null
+                                ? '$relStr • Nacimiento: ${patient['date_of_birth']}'
+                                : relStr,
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                          selected: isSelected,
+                          selectedTileColor: AppColors.primaryBlue.withAlpha(13),
+                          onTap: () {
+                            setState(() => _selectedPatient = patient);
+                            _loadNotesForPatient(patient['id'] as String);
+                          },
                         ),
-                        subtitle: patient['date_of_birth'] != null
-                            ? Text(
-                                'Nacimiento: ${patient['date_of_birth']}',
-                                style: const TextStyle(fontSize: 12),
-                              )
-                            : null,
-                        selected: isSelected,
-                        selectedTileColor: AppColors.primaryBlue.withAlpha(13),
-                        onTap: () {
-                          setState(() => _selectedPatient = patient);
-                          _loadNotesForPatient(patient['id'] as String);
-                        },
                       );
                     },
                   ),
@@ -331,6 +442,32 @@ class _ClinicalHistoryViewState extends ConsumerState<ClinicalHistoryView> {
                     ),
                   ),
                 ),
+                OutlinedButton.icon(
+                  onPressed: _exportFullPatientHistoryPdf,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.error,
+                    side: const BorderSide(color: AppColors.error),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  icon: const Icon(Icons.picture_as_pdf, size: 18),
+                  label: const Text('Exportar PDF'),
+                ),
+                const SizedBox(width: 8),
+                OutlinedButton.icon(
+                  onPressed: _uploadAttachmentForSelectedPatient,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.primaryBlue,
+                    side: const BorderSide(color: AppColors.primaryBlue),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  icon: const Icon(Icons.cloud_upload_outlined, size: 18),
+                  label: const Text('Subir Radiografía'),
+                ),
+                const SizedBox(width: 8),
                 ElevatedButton.icon(
                   onPressed: () => _showNewNoteDialog(),
                   style: ElevatedButton.styleFrom(
@@ -346,8 +483,43 @@ class _ClinicalHistoryViewState extends ConsumerState<ClinicalHistoryView> {
               ],
             ),
           ),
+          // Barra de pestañas (Notas vs Citas vs Radiografías)
+          Container(
+            color: Colors.white,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  ChoiceChip(
+                    label: Text('Notas Clínicas (${_notes.length})'),
+                    selected: _selectedTab == 0,
+                    onSelected: (val) {
+                      if (val) setState(() => _selectedTab = 0);
+                    },
+                  ),
+                  const SizedBox(width: 8),
+                  ChoiceChip(
+                    label: Text('Citas Agendadas (${_patientAppointments.length})'),
+                    selected: _selectedTab == 1,
+                    onSelected: (val) {
+                      if (val) setState(() => _selectedTab = 1);
+                    },
+                  ),
+                  const SizedBox(width: 8),
+                  ChoiceChip(
+                    label: Text('Radiografías y Estudios (${_attachments.length})'),
+                    selected: _selectedTab == 2,
+                    onSelected: (val) {
+                      if (val) setState(() => _selectedTab = 2);
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ),
           const Divider(height: 1),
-          // Lista de notas clínicas
+          // Contenido según pestaña elegida
           Expanded(
             child: _isLoadingNotes
                 ? const Center(
@@ -355,42 +527,115 @@ class _ClinicalHistoryViewState extends ConsumerState<ClinicalHistoryView> {
                       color: AppColors.primaryBlue,
                     ),
                   )
-                : _notes.isEmpty
-                ? Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.note_alt_outlined,
-                          size: 48,
-                          color: Colors.grey.shade300,
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Sin notas clínicas',
-                          style: TextStyle(
-                            fontSize: 16,
-                            color: Colors.grey.shade400,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'Crea la primera nota con el botón de arriba',
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: Colors.grey.shade400,
-                          ),
-                        ),
-                      ],
-                    ),
-                  )
-                : ListView.builder(
-                    padding: const EdgeInsets.all(16),
-                    itemCount: _notes.length,
-                    itemBuilder: (context, index) {
-                      return _buildNoteCard(_notes[index]);
-                    },
-                  ),
+                : _selectedTab == 0
+                    ? (_notes.isEmpty
+                        ? Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.note_alt_outlined,
+                                  size: 48,
+                                  color: Colors.grey.shade300,
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  'Sin notas clínicas',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    color: Colors.grey.shade400,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          )
+                        : ListView.builder(
+                            padding: const EdgeInsets.all(16),
+                            itemCount: _notes.length,
+                            itemBuilder: (context, index) {
+                              return _buildNoteCard(_notes[index]);
+                            },
+                          ))
+                    : (_selectedTab == 1
+                        ? (_patientAppointments.isEmpty
+                            ? Center(
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(
+                                      Icons.calendar_today_outlined,
+                                      size: 48,
+                                      color: Colors.grey.shade300,
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      'Sin citas registradas',
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        color: Colors.grey.shade400,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              )
+                            : ListView.builder(
+                                padding: const EdgeInsets.all(16),
+                                itemCount: _patientAppointments.length,
+                                itemBuilder: (context, index) {
+                                  final appt = _patientAppointments[index];
+                                  final dateStr = appt['date_time'] != null
+                                      ? DateFormat('dd/MM/yyyy - hh:mm a').format(
+                                          DateTime.parse(appt['date_time'] as String).toLocal(),
+                                        )
+                                      : 'Fecha no especificada';
+                                  final doctorName = (appt['doctors'] as Map?)?['profiles']?['name'] ?? 'Dentista';
+                                  final serviceName = (appt['services'] as Map?)?['service_name'] ?? 'Consulta';
+                                  final status = appt['status'] as String? ?? 'upcoming';
+
+                                  final statusLabel = switch (status) {
+                                    'upcoming' => 'Programada',
+                                    'in_lobby' => 'En espera',
+                                    'in_treatment' => 'En consulta',
+                                    'completed' => 'Completada',
+                                    'cancelled' => 'Cancelada',
+                                    _ => status,
+                                  };
+
+                                  return Card(
+                                    margin: const EdgeInsets.only(bottom: 12),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    child: ListTile(
+                                      leading: const CircleAvatar(
+                                        backgroundColor: AppColors.lightBlueAccent,
+                                        child: Icon(Icons.calendar_month, color: AppColors.primaryBlue),
+                                      ),
+                                      title: Text(
+                                        serviceName,
+                                        style: const TextStyle(fontWeight: FontWeight.bold),
+                                      ),
+                                      subtitle: Text('Dr. $doctorName • $dateStr'),
+                                      trailing: Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                        decoration: BoxDecoration(
+                                          color: AppColors.lightBlueAccent,
+                                          borderRadius: BorderRadius.circular(12),
+                                        ),
+                                        child: Text(
+                                          statusLabel,
+                                          style: const TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w600,
+                                            color: AppColors.primaryBlue,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ))
+                        : _buildAttachmentsGrid()),
           ),
         ],
       ),
@@ -398,9 +643,14 @@ class _ClinicalHistoryViewState extends ConsumerState<ClinicalHistoryView> {
   }
 
   Widget _buildNoteCard(ClinicalNote note) {
-    final dateStr = note.createdAt != null
-        ? DateFormat('dd MMM yyyy, HH:mm', 'es').format(note.createdAt!)
-        : 'Sin fecha';
+    String dateStr = 'Sin fecha';
+    if (note.createdAt != null) {
+      try {
+        dateStr = DateFormat('dd MMM yyyy, HH:mm', 'es').format(note.createdAt!);
+      } catch (_) {
+        dateStr = DateFormat('dd/MM/yyyy, HH:mm').format(note.createdAt!);
+      }
+    }
 
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
@@ -525,10 +775,11 @@ class _ClinicalHistoryViewState extends ConsumerState<ClinicalHistoryView> {
     final observationsCtrl = TextEditingController();
     List<int> selectedTeeth = [];
 
-    final saved = await showDialog<bool>(
+    final savedNote = await showDialog<dynamic>(
       context: context,
       barrierDismissible: false,
       builder: (context) {
+
         return StatefulBuilder(
           builder: (context, setDialogState) {
             return Dialog(
@@ -628,16 +879,14 @@ class _ClinicalHistoryViewState extends ConsumerState<ClinicalHistoryView> {
                             onPressed: () => Navigator.pop(context, false),
                             child: const Text('Cancelar'),
                           ),
-                          const SizedBox(width: 12),
-                          ElevatedButton.icon(
+                          const SizedBox(width: 8),
+                          OutlinedButton.icon(
                             onPressed: () async {
                               if (diagnosisCtrl.text.trim().isEmpty &&
                                   treatmentCtrl.text.trim().isEmpty) {
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   const SnackBar(
-                                    content: Text(
-                                      'Ingresa al menos un diagnóstico o tratamiento.',
-                                    ),
+                                    content: Text('Ingresa al menos un diagnóstico o tratamiento.'),
                                   ),
                                 );
                                 return;
@@ -656,7 +905,47 @@ class _ClinicalHistoryViewState extends ConsumerState<ClinicalHistoryView> {
                               final repo = ref.read(clinicalRepositoryProvider);
                               final saved = await repo.saveNote(note);
                               if (saved != null && context.mounted) {
-                                Navigator.pop(context, true);
+                                Navigator.pop(context, {'note': saved, 'prescribe': false});
+                              }
+                            },
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: AppColors.primaryBlue,
+                              side: const BorderSide(color: AppColors.primaryBlue),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                            ),
+                            icon: const Icon(Icons.save, size: 18),
+                            label: const Text('Solo Guardar'),
+                          ),
+                          const SizedBox(width: 8),
+                          ElevatedButton.icon(
+                            onPressed: () async {
+                              if (diagnosisCtrl.text.trim().isEmpty &&
+                                  treatmentCtrl.text.trim().isEmpty) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Ingresa al menos un diagnóstico o tratamiento.'),
+                                  ),
+                                );
+                                return;
+                              }
+
+                              final note = ClinicalNote(
+                                patientId: _selectedPatient!['id'] as String,
+                                doctorId: _doctorRecordId,
+                                clinicId: _clinicId,
+                                diagnosis: diagnosisCtrl.text.trim(),
+                                treatmentPerformed: treatmentCtrl.text.trim(),
+                                observations: observationsCtrl.text.trim(),
+                                toothNumbers: selectedTeeth,
+                              );
+
+                              final repo = ref.read(clinicalRepositoryProvider);
+                              final savedNote = await repo.saveNote(note);
+                              if (savedNote != null && context.mounted) {
+                                Navigator.pop(context, {'note': savedNote, 'prescribe': true});
                               }
                             },
                             style: ElevatedButton.styleFrom(
@@ -665,13 +954,10 @@ class _ClinicalHistoryViewState extends ConsumerState<ClinicalHistoryView> {
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(12),
                               ),
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 24,
-                                vertical: 12,
-                              ),
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                             ),
-                            icon: const Icon(Icons.save, size: 18),
-                            label: const Text('Guardar Nota'),
+                            icon: const Icon(Icons.medication, size: 18),
+                            label: const Text('Guardar y Recetar'),
                           ),
                         ],
                       ),
@@ -685,8 +971,15 @@ class _ClinicalHistoryViewState extends ConsumerState<ClinicalHistoryView> {
       },
     );
 
-    if (saved == true && _selectedPatient != null) {
+    if (savedNote is Map<String, dynamic> && _selectedPatient != null) {
+      final note = savedNote['note'] as ClinicalNote;
+      final prescribe = savedNote['prescribe'] as bool;
+
       _loadNotesForPatient(_selectedPatient!['id'] as String);
+
+      if (prescribe) {
+        _showNewPrescriptionDialog(note);
+      }
     }
   }
 
@@ -1121,5 +1414,254 @@ class _ClinicalHistoryViewState extends ConsumerState<ClinicalHistoryView> {
         backgroundColor: AppColors.success,
       ),
     );
+  }
+
+  Widget _buildAttachmentsGrid() {
+    if (_attachments.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.photo_library_outlined,
+                size: 56,
+                color: Colors.grey.shade300,
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Sin radiografías o estudios registrados',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.grey.shade500,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Sube una radiografía para asociarla al expediente de ${_selectedPatient?['first_name'] ?? 'este paciente'}.',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 13, color: Colors.grey.shade400),
+              ),
+              const SizedBox(height: 20),
+              ElevatedButton.icon(
+                onPressed: _uploadAttachmentForSelectedPatient,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primaryBlue,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                icon: const Icon(Icons.cloud_upload_outlined, size: 18),
+                label: const Text('Subir Radiografía / Estudio'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Estudios y Radiografías (${_attachments.length})',
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+              TextButton.icon(
+                onPressed: _uploadAttachmentForSelectedPatient,
+                icon: const Icon(Icons.add_a_photo_outlined, size: 18),
+                label: const Text('Añadir Otro'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+              maxCrossAxisExtent: 220,
+              mainAxisSpacing: 12,
+              crossAxisSpacing: 12,
+              childAspectRatio: 0.85,
+            ),
+            itemCount: _attachments.length,
+            itemBuilder: (context, index) {
+              final att = _attachments[index];
+              final dateStr = DateFormat('dd/MM/yyyy').format(att.createdAt.toLocal());
+              final isPdf = att.fileType == 'pdf' || att.fileName.toLowerCase().endsWith('.pdf');
+
+              return InkWell(
+                onTap: () => _viewAttachmentPreview(att),
+                borderRadius: BorderRadius.circular(14),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: Colors.grey.shade200),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withAlpha(8),
+                        blurRadius: 8,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: ClipRRect(
+                          borderRadius: const BorderRadius.vertical(top: Radius.circular(14)),
+                          child: Container(
+                            width: double.infinity,
+                            color: AppColors.primaryBlue.withAlpha(12),
+                            child: isPdf
+                                ? const Center(
+                                    child: Icon(
+                                      Icons.picture_as_pdf_outlined,
+                                      size: 48,
+                                      color: AppColors.error,
+                                    ),
+                                  )
+                                : Image.network(
+                                    att.fileUrl,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (context, error, stackTrace) =>
+                                        const Center(
+                                      child: Icon(
+                                        Icons.image_not_supported_outlined,
+                                        size: 40,
+                                        color: Colors.grey,
+                                      ),
+                                    ),
+                                  ),
+                          ),
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.all(10.0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              att.fileName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              dateStr,
+                              style: const TextStyle(
+                                color: Colors.grey,
+                                fontSize: 11,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _viewAttachmentPreview(ClinicalAttachment att) {
+    final isPdf = att.fileType == 'pdf' || att.fileName.toLowerCase().endsWith('.pdf');
+    showDialog(
+      context: context,
+      builder: (context) {
+        return Dialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 700, maxHeight: 600),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                AppBar(
+                  title: Text(att.fileName, style: const TextStyle(fontSize: 16)),
+                  backgroundColor: Colors.white,
+                  foregroundColor: AppColors.textPrimary,
+                  elevation: 0,
+                  automaticallyImplyLeading: false,
+                  actions: [
+                    IconButton(
+                      icon: const Icon(Icons.close),
+                      onPressed: () => Navigator.pop(context),
+                    ),
+                  ],
+                ),
+                Expanded(
+                  child: InteractiveViewer(
+                    child: isPdf
+                        ? const Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.picture_as_pdf, size: 64, color: AppColors.error),
+                                SizedBox(height: 12),
+                                Text('Documento PDF adjunto.'),
+                              ],
+                            ),
+                          )
+                        : Image.network(
+                            att.fileUrl,
+                            fit: BoxFit.contain,
+                            errorBuilder: (context, error, stackTrace) =>
+                                const Center(child: Text('Error al cargar imagen')),
+                          ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _exportFullPatientHistoryPdf() async {
+    final patient = _selectedPatient;
+    if (patient == null) return;
+
+    try {
+      await ClinicalHistoryPdfGenerator.generateAndShow(
+        context: context,
+        patient: patient,
+        notes: _notes,
+        appointments: _patientAppointments,
+        attachments: _attachments,
+      );
+    } catch (e) {
+      debugPrint('Error generating PDF: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al generar expediente PDF: $e'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    }
   }
 }
