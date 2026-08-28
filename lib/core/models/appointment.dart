@@ -13,6 +13,7 @@ class Appointment {
   // Joined fields
   final String? doctorName;
   final String? patientName;
+  final String? profileId;
   final String? serviceName;
   final int? serviceDurationMins;
 
@@ -29,6 +30,7 @@ class Appointment {
     this.reminderSent = false,
     this.doctorName,
     this.patientName,
+    this.profileId,
     this.serviceName,
     this.serviceDurationMins,
   });
@@ -41,9 +43,11 @@ class Appointment {
     }
 
     String? patName;
+    String? profId;
     if (map['patient'] != null) {
       patName =
           '${map['patient']['first_name']} ${map['patient']['last_name']}';
+      profId = map['patient']['profile_id'] as String?;
     }
 
     String? servName;
@@ -66,8 +70,21 @@ class Appointment {
       reminderSent: map['reminder_sent'] as bool? ?? false,
       doctorName: docName,
       patientName: patName,
+      profileId: profId,
       serviceName: servName,
       serviceDurationMins: servDur,
     );
+  }
+
+  String get displayQueueCode {
+    if (queueCode != null &&
+        queueCode!.trim().isNotEmpty &&
+        queueCode != 'N/A') {
+      return queueCode!;
+    }
+    final shortId = id.length >= 4
+        ? id.substring(id.length - 4).toUpperCase()
+        : id.toUpperCase();
+    return 'T-$shortId';
   }
 }

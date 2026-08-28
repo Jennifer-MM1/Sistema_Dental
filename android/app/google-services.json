@@ -1,13 +1,13 @@
 {
   "project_info": {
-    "project_number": "368790947197",
-    "project_id": "clinicad-b150f",
-    "storage_bucket": "clinicad-b150f.firebasestorage.app"
+    "project_number": "61959782073",
+    "project_id": "dentalsync-484e0",
+    "storage_bucket": "dentalsync-484e0.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:368790947197:android:db12be51997424d0083814",
+        "mobilesdk_app_id": "1:61959782073:android:cba2baa69c2249937da568",
         "android_client_info": {
           "package_name": "com.example.sistema_dental"
         }
@@ -15,7 +15,7 @@
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyCgAzL5Pm3wksaoozGEJGN4wFfZgacKrVQ"
+          "current_key": "AIzaSyCk_e4tGeCfd6lyUAwr3EE9tIQBpCvl1Zw"
         }
       ],
       "services": {

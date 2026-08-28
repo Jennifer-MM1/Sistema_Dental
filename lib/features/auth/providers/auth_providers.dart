@@ -206,7 +206,7 @@ class LoginNotifier extends Notifier<LoginState> {
   String _translateConnectionError(Object error) {
     final message = error.toString().toLowerCase();
     if (_isConnectionError(message)) {
-      return 'No tienes conexión a internet. Revisa tu Wi-Fi o datos móviles e intenta de nuevo.';
+      return 'No se pudo conectar al servidor de Supabase. Revisa tu conexión a internet o verifica si tu proyecto en Supabase está pausado.';
     }
     return 'No pudimos conectar con el servidor. Intenta de nuevo en unos segundos.';
   }

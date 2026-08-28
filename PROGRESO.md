@@ -37,6 +37,22 @@ Se estructuró la infraestructura de comunicación para alertar a los pacientes 
   * Detección y limpieza automática en base de datos de tokens FCM obsoletos o desinstalados (`UNREGISTERED`).
 
 
+### 3. Recordatorios de Citas Automatizados (Módulo 3)
+* **Edge Function en Supabase:** `remind-upcoming-appointments` para enviar notificaciones push a pacientes 24h antes de su cita.
+* **Migración SQL:** [202608030001_cron_reminders.sql](file:///supabase/migrations/202608030001_cron_reminders.sql) con la columna `reminder_sent` e índices para la ejecución periódica con `pg_cron`.
+
+### 4. Estudios Clínicos y Radiografías (Módulo 4)
+* **Supabase Storage:** Bucket `clinical-files` y políticas RLS [202608030002_clinical_attachments_storage.sql](file:///supabase/migrations/202608030002_clinical_attachments_storage.sql).
+* **Dart Models & Repository:** Modelo [clinical_attachment.dart](file:///lib/core/models/clinical_attachment.dart) y repositorio [clinical_attachment_repository.dart](file:///lib/features/dentist/data/clinical_attachment_repository.dart) para subir y descargar radiografías, tomografías e imágenes clínicas.
+
+### 5. Caché Local y Modo Offline (Módulo 5)
+* **Servicio de Caché:** [local_cache_service.dart](file:///lib/core/cache/local_cache_service.dart) para almacenar copias locales de expedientes y citas.
+* **Banner de Estado:** Componente visual [offline_banner.dart](file:///lib/features/shared/presentation/widgets/offline_banner.dart) para alertar al usuario en modo sin conexión.
+
+### 6. Reportes Médicos Operativos y Pruebas (Módulo 6)
+* **Dashboard Estadístico:** Componente [clinical_reports_view.dart](file:///lib/features/dentist/presentation/widgets/clinical_reports_view.dart) con gráficos de citas completadas vs canceladas y exportación de reportes resumidos en PDF.
+* **Pruebas Automatizadas:** Suite de tests unitarios [clinical_attachment_test.dart](file:///test/clinical_attachment_test.dart) y [local_cache_service_test.dart](file:///test/local_cache_service_test.dart).
+
 ---
 
 ## 📱 Compatibilidad Multidispositivo (Estado Actual)
@@ -54,16 +70,10 @@ El sistema está diseñado en **Flutter** para ser multidispositivo, adaptándos
 
 ---
 
-## 🚀 Próximas Funcionalidades (Sugeridas para Implementar)
+## 🚀 Pendientes que requieren intervención manual / credenciales externas
 
-A partir de la base actual, se pueden implementar las siguientes características para enriquecer el software:
+1. **Configuración de Notificaciones en iOS (APNs):**
+   * Vincular certificados APNs de Apple Developer Portal en Firebase Console para notificaciones en dispositivos iPhone.
+2. **Registro de secretos en Supabase Console (Producción):**
+   * Registrar `FIREBASE_SERVICE_ACCOUNT` en el apartado *Edge Functions -> Secrets* de Supabase si se migra a un proyecto de producción.
 
-### 1. Recordatorios de Citas Automatizados (Cron Jobs / Supabase pg_net)
-* Implementar recordatorios automáticos (por ejemplo, 24 horas antes de la cita).
-* Esto se puede realizar mediante Edge Functions que se ejecuten periódicamente (ej. cada hora) para buscar citas próximas y disparar notificaciones push automáticas a los pacientes correspondientes.
-
-### 2. Historial Clínico y Recetas Digitales
-* Crear un módulo para que los dentistas registren notas de evolución, odontogramas interactivos y generen recetas en formato PDF que los pacientes puedan descargar desde su respectivo panel.
-
-### 3. Configuración de Notificaciones en iOS
-* Actualmente la app está lista en Android. Para iOS, se requiere configurar las llaves APNs en el portal de desarrolladores de Apple y vincular los certificados en Firebase Console para habilitar las alertas push en iPhones.

@@ -9,6 +9,7 @@ import 'package:sistema_dental/core/theme/app_theme.dart';
 import 'package:sistema_dental/core/router/app_router.dart';
 import 'package:sistema_dental/core/notifications/fcm_service.dart';
 import 'package:sistema_dental/core/wear/wear_link_service.dart';
+import 'package:intl/date_symbol_data_local.dart';
 // ignore: uri_does_not_exist
 import 'firebase_options.dart'; // Generado por FlutterFire CLI
 
@@ -16,7 +17,9 @@ void main() async {
   debugPrint("=== INICIANDO APP ===");
   try {
     WidgetsFlutterBinding.ensureInitialized();
-    debugPrint("[1/4] WidgetsFlutterBinding inicializado.");
+    await initializeDateFormatting('es', null);
+    await initializeDateFormatting('es_MX', null);
+    debugPrint("[1/4] WidgetsFlutterBinding e Intl locales inicializados.");
   } catch (e) {
     debugPrint("ERROR en WidgetsFlutterBinding: $e");
   }

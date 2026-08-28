@@ -44,39 +44,38 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'AIzaSyA_WfoA5g4NVNutSQGcJInI9nHIBbOL0aw',
-    appId: '1:368790947197:web:67a5321611484d76083814',
-    messagingSenderId: '368790947197',
-    projectId: 'clinicad-b150f',
-    authDomain: 'clinicad-b150f.firebaseapp.com',
-    storageBucket: 'clinicad-b150f.firebasestorage.app',
-    measurementId: 'G-DHY8726X08',
+    apiKey: 'AIzaSyC0JHL6UtTPX3hVYHR5LK3r2aahHMFxXUU',
+    appId: '1:61959782073:web:a6a116dba2b4cbbb7da568',
+    messagingSenderId: '61959782073',
+    projectId: 'dentalsync-484e0',
+    authDomain: 'dentalsync-484e0.firebaseapp.com',
+    storageBucket: 'dentalsync-484e0.firebasestorage.app',
+    measurementId: 'G-0DC822SE9X',
   );
 
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'AIzaSyCgAzL5Pm3wksaoozGEJGN4wFfZgacKrVQ',
-    appId: '1:368790947197:android:db12be51997424d0083814',
-    messagingSenderId: '368790947197',
-    projectId: 'clinicad-b150f',
-    storageBucket: 'clinicad-b150f.firebasestorage.app',
+    apiKey: 'AIzaSyCk_e4tGeCfd6lyUAwr3EE9tIQBpCvl1Zw',
+    appId: '1:61959782073:android:cba2baa69c2249937da568',
+    messagingSenderId: '61959782073',
+    projectId: 'dentalsync-484e0',
+    storageBucket: 'dentalsync-484e0.firebasestorage.app',
   );
-
   static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'AIzaSyAO2bOyZn3lFnL6HLGN2UUKIOCDllwao58',
-    appId: '1:368790947197:ios:1e8b03f8e8bdce8d083814',
-    messagingSenderId: '368790947197',
-    projectId: 'clinicad-b150f',
-    storageBucket: 'clinicad-b150f.firebasestorage.app',
+    apiKey: 'AIzaSyA5-xSA9yGRTqNL9RLZfTPt46OUAnmsKXI',
+    appId: '1:61959782073:ios:07ec4c92ad1ae9e17da568',
+    messagingSenderId: '61959782073',
+    projectId: 'dentalsync-484e0',
+    storageBucket: 'dentalsync-484e0.firebasestorage.app',
     iosBundleId: 'com.example.sistemaDental',
   );
 
   static const FirebaseOptions windows = FirebaseOptions(
-    apiKey: 'AIzaSyA_WfoA5g4NVNutSQGcJInI9nHIBbOL0aw',
-    appId: '1:368790947197:web:ab24d5a224aa5527083814',
-    messagingSenderId: '368790947197',
-    projectId: 'clinicad-b150f',
-    authDomain: 'clinicad-b150f.firebaseapp.com',
-    storageBucket: 'clinicad-b150f.firebasestorage.app',
-    measurementId: 'G-6VBT8846G6',
+    apiKey: 'AIzaSyC0JHL6UtTPX3hVYHR5LK3r2aahHMFxXUU',
+    appId: '1:61959782073:web:7103c544c87b48467da568',
+    messagingSenderId: '61959782073',
+    projectId: 'dentalsync-484e0',
+    authDomain: 'dentalsync-484e0.firebaseapp.com',
+    storageBucket: 'dentalsync-484e0.firebasestorage.app',
+    measurementId: 'G-VCX8NTRSB1',
   );
 }

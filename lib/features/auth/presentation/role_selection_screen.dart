@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -187,64 +188,87 @@ class _RoleSelectionScreenState extends ConsumerState<RoleSelectionScreen> {
       body: SafeArea(
         child: _isLoading
             ? const Center(child: CircularProgressIndicator())
-            : SingleChildScrollView(
-                padding: const EdgeInsets.all(32),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    const Icon(
-                      Icons.account_circle,
-                      size: 80,
-                      color: AppColors.primaryBlue,
-                    ),
-                    const SizedBox(height: 24),
-                    const Text(
-                      '¿Cómo deseas ingresar hoy?',
-                      style: TextStyle(
-                        fontSize: 28,
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    const Text(
-                      'Selecciona tu modo de uso. Podrás cambiarlo más tarde.',
-                      style: TextStyle(
-                        fontSize: 16,
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                    const SizedBox(height: 48),
-                    Wrap(
-                      spacing: 24,
-                      runSpacing: 24,
-                      alignment: WrapAlignment.center,
+            : Center(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 24,
+                    vertical: 32,
+                  ),
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 960),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
-                        _buildModeCard(
-                          title: 'Dentista',
-                          subtitle:
-                              'Administra tu clínica o ayuda a otro colega',
-                          icon: Icons.health_and_safety,
+                        const Icon(
+                          Icons.account_circle,
+                          size: 80,
                           color: AppColors.primaryBlue,
-                          onTap: () => _handleRoleSelection('dentist'),
                         ),
-                        _buildModeCard(
-                          title: 'Secretaria',
-                          subtitle: 'Gestiona la clínica en la que trabajas',
-                          icon: Icons.support_agent,
-                          color: AppColors.warning,
-                          onTap: () => _handleRoleSelection('staff'),
+                        const SizedBox(height: 24),
+                        const Text(
+                          '¿Cómo deseas ingresar hoy?',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 28,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.textPrimary,
+                          ),
                         ),
-                        _buildModeCard(
-                          title: 'Cliente',
-                          subtitle: 'Revisa tus citas y expediente',
-                          icon: Icons.person,
-                          color: AppColors.success,
-                          onTap: () => _handleRoleSelection('client'),
+                        const SizedBox(height: 8),
+                        const Text(
+                          'Selecciona tu modo de uso. Podrás cambiarlo más tarde.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 16,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                        const SizedBox(height: 48),
+                        Wrap(
+                          spacing: 24,
+                          runSpacing: 24,
+                          alignment: WrapAlignment.center,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          children: [
+                            _buildModeCard(
+                              title: 'Dentista',
+                              subtitle:
+                                  'Administra tu clínica o ayuda a otro colega',
+                              icon: Icons.health_and_safety,
+                              color: AppColors.primaryBlue,
+                              onTap: () => _handleRoleSelection('dentist'),
+                            ),
+                            _buildModeCard(
+                              title: 'Secretaria',
+                              subtitle:
+                                  'Gestiona la clínica en la que trabajas',
+                              icon: Icons.support_agent,
+                              color: AppColors.warning,
+                              onTap: () => _handleRoleSelection('staff'),
+                            ),
+                            _buildModeCard(
+                              title: 'Cliente',
+                              subtitle: 'Revisa tus citas y expediente',
+                              icon: Icons.person,
+                              color: AppColors.success,
+                              onTap: () => _handleRoleSelection('client'),
+                            ),
+                             // Tarjeta de vista previa del reloj — solo en navegador web
+                            if (kIsWeb)
+                              _buildModeCard(
+                                title: 'Vista Reloj',
+                                subtitle:
+                                    'Previsualiza la app Wear OS de Cliente con tus datos reales',
+                                icon: Icons.watch_rounded,
+                                color: const Color(0xFF078256),
+                                onTap: () => context.go('/wear-preview?role=client'),
+                              ),
+                          ],
                         ),
                       ],
                     ),
-                  ],
+                  ),
                 ),
               ),
       ),

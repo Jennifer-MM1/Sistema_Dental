@@ -10,6 +10,8 @@ import 'package:sistema_dental/features/dentist/presentation/dentist_dashboard.d
 import 'package:sistema_dental/features/secretary/presentation/secretary_dashboard.dart';
 
 import 'package:sistema_dental/features/auth/presentation/link_clinic_screen.dart';
+import 'package:sistema_dental/features/wear/presentation/wear_app.dart';
+import 'package:sistema_dental/features/wear/presentation/wear_web_preview_screen.dart';
 
 /// Proveedor del router con protección de rutas basada en roles.
 /// Usa Riverpod para acceder al estado de autenticación.
@@ -20,16 +22,19 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       final supabase = Supabase.instance.client;
       final user = supabase.auth.currentUser;
 
-      final isOnLoginPage =
-          state.uri.path == '/login' || state.uri.path == '/register';
+      final isBypassPage =
+          state.uri.path == '/login' ||
+          state.uri.path == '/register' ||
+          state.uri.path == '/wear' ||
+          state.uri.path == '/wear-preview';
 
-      // Si no hay usuario autenticado y NO está en login/registro → redirigir a login
+      // Si no hay usuario autenticado y NO está en login/registro/wear → redirigir a login
       if (user == null) {
-        return isOnLoginPage ? null : '/login';
+        return isBypassPage ? null : '/login';
       }
 
       // Si hay usuario autenticado y ESTÁ en login/registro → redirigir al hub de modos
-      if (isOnLoginPage) {
+      if (state.uri.path == '/login' || state.uri.path == '/register') {
         return '/mode_selector';
       }
 
@@ -57,7 +62,6 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: '/client',
         builder: (context, state) => const ClientDashboard(),
       ),
-
       GoRoute(
         path: '/dentist',
         builder: (context, state) => const DentistDashboard(),
@@ -65,6 +69,17 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/secretary',
         builder: (context, state) => const SecretaryDashboard(),
+      ),
+      GoRoute(
+        path: '/wear',
+        builder: (context, state) => const WearDentalSyncApp(),
+      ),
+      GoRoute(
+        path: '/wear-preview',
+        builder: (context, state) {
+          final role = state.uri.queryParameters['role'];
+          return WearWebPreviewScreen(role: role);
+        },
       ),
     ],
     errorBuilder: (context, state) => Scaffold(

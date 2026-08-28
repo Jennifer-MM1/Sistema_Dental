@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+
 import 'package:sistema_dental/core/notifications/fcm_service.dart';
 import 'package:sistema_dental/core/theme/app_colors.dart';
 import 'package:sistema_dental/core/wear/wear_link_service.dart';
@@ -161,7 +162,9 @@ class UserProfileView extends ConsumerWidget {
                     content: Text(
                       success
                           ? 'Contraseña actualizada.'
-                          : 'La contraseña debe coincidir y tener al menos 6 caracteres.',
+                          : matches
+                              ? 'No se pudo actualizar la contraseña.'
+                              : 'Las contraseñas no coinciden.',
                     ),
                     backgroundColor: success ? null : AppColors.error,
                   ),
@@ -175,75 +178,42 @@ class UserProfileView extends ConsumerWidget {
     );
   }
 
-  void _showBiometricInfo(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Biometría'),
-        content: const Text(
-          'La biometría depende del bloqueo seguro del dispositivo. DentalSync usará esa seguridad cuando el acceso biométrico esté habilitado para la app.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Entendido'),
-          ),
-        ],
-      ),
-    );
-  }
-
   void _showLinkWatchDialog(BuildContext context, WidgetRef ref) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Vincular Wear OS'),
+        title: const Text('Vincular reloj inteligente'),
         content: const Text(
-          'DentalSync buscará relojes Wear OS emparejados con este teléfono y enviará tu sesión de forma automática.',
+          'DentalSync buscará relojes Wear OS emparejados con este teléfono y enviará la sesión de forma automática.',
         ),
         actions: [
-          Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              FilledButton.icon(
-                icon: const Icon(Icons.watch_rounded, color: Colors.white),
-                label: const Text('Vincular automáticamente'),
-                onPressed: () async {
-                  final link = await WearLinkService.instance
-                      .linkCurrentSession(role: roleLabel);
-
-                  if (link.success) {
-                    final repo = ref.read(notificationRepositoryProvider);
-                    await repo.deactivateSmartwatchDevices();
-                    ref
-                        .read(smartwatchLinkedOverrideProvider.notifier)
-                        .markLinked();
-                    ref.invalidate(wearCompanionLinkedProvider);
-                  }
-
-                  if (context.mounted) {
-                    Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(
-                          link.success
-                              ? 'Sesión enviada. En el reloj toca Reintentar.'
-                              : link.message,
-                        ),
-                        backgroundColor: link.success
-                            ? AppColors.success
-                            : AppColors.error,
-                      ),
-                    );
-                  }
-                },
-              ),
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Cancelar'),
-              ),
-            ],
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              final link = await WearLinkService.instance.linkCurrentSession(
+                role: roleLabel,
+              );
+              ref.read(smartwatchLinkedOverrideProvider.notifier).markLinked();
+              await ref.refresh(linkedDevicesProvider.future).then((_) {});
+              ref.invalidate(wearCompanionLinkedProvider);
+              if (context.mounted) {
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      link.success
+                          ? 'Reloj vinculado. Toca reintentar en el reloj.'
+                          : link.message,
+                    ),
+                    backgroundColor: link.success ? null : AppColors.error,
+                  ),
+                );
+              }
+            },
+            child: const Text('Vincular'),
           ),
         ],
       ),
@@ -449,39 +419,57 @@ class UserProfileView extends ConsumerWidget {
                 foregroundColor: Colors.white,
                 elevation: 0,
                 padding: const EdgeInsets.symmetric(vertical: 16),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
               ),
               icon: const Icon(Icons.swap_horiz),
               label: const Text(
-                'Cambiar modo',
-                style: TextStyle(fontWeight: FontWeight.bold),
+                'Cambiar modo / rol',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
               ),
             ),
           ),
           const SizedBox(height: 12),
           SizedBox(
             width: double.infinity,
-            child: ElevatedButton.icon(
+            child: OutlinedButton.icon(
               onPressed: () async {
-                await ref.read(authRepositoryProvider).signOut();
+                await ref.read(loginProvider.notifier).logout();
                 if (context.mounted) context.go('/login');
               },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.error.withValues(alpha: 0.1),
+              style: OutlinedButton.styleFrom(
                 foregroundColor: AppColors.error,
-                elevation: 0,
+                side: const BorderSide(color: AppColors.error),
                 padding: const EdgeInsets.symmetric(vertical: 16),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
               ),
               icon: const Icon(Icons.logout),
               label: const Text(
                 'Cerrar sesión',
-                style: TextStyle(fontWeight: FontWeight.bold),
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
               ),
             ),
           ),
-          const SizedBox(height: 16),
-          const Text(
-            'Versión 2.4.0',
-            style: TextStyle(color: Colors.grey, fontSize: 12),
+        ],
+      ),
+    );
+  }
+
+  void _showBiometricInfo(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Acceso biométrico'),
+        content: const Text(
+          'La autenticación biométrica (Huella / Face ID) está sincronizada automáticamente con la seguridad de tu dispositivo.',
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Entendido'),
           ),
         ],
       ),
@@ -489,18 +477,16 @@ class UserProfileView extends ConsumerWidget {
   }
 
   Widget _buildSectionTitle(String title) {
-    return Padding(
-      padding: const EdgeInsets.only(left: 8, bottom: 12),
-      child: Align(
-        alignment: Alignment.centerLeft,
-        child: Text(
-          title,
-          style: const TextStyle(
-            color: Colors.grey,
-            fontWeight: FontWeight.bold,
-            letterSpacing: 1.2,
-            fontSize: 12,
-          ),
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Text(
+        title,
+        style: const TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.bold,
+          color: AppColors.textSecondary,
+          letterSpacing: 1,
         ),
       ),
     );
@@ -510,42 +496,34 @@ class UserProfileView extends ConsumerWidget {
     required IconData icon,
     required String title,
     required String subtitle,
-    required Widget trailing,
+    Widget? trailing,
     VoidCallback? onTap,
   }) {
-    return Material(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(16),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              Icon(icon, color: AppColors.primaryBlue),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
-                      ),
-                    ),
-                    Text(
-                      subtitle,
-                      style: const TextStyle(color: Colors.grey, fontSize: 13),
-                    ),
-                  ],
-                ),
-              ),
-              trailing,
-            ],
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Material(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        clipBehavior: Clip.antiAlias,
+        child: ListTile(
+          onTap: onTap,
+          leading: Container(
+            padding: const EdgeInsets.all(8),
+            decoration: const BoxDecoration(
+              color: AppColors.lightBlueAccent,
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, color: AppColors.primaryBlue, size: 20),
           ),
+          title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
+          subtitle: Text(
+            subtitle,
+            style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+          ),
+          trailing: trailing,
         ),
       ),
     );

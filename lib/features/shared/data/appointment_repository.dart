@@ -4,14 +4,17 @@ import 'package:sistema_dental/core/models/appointment.dart';
 import 'package:sistema_dental/core/supabase/supabase_provider.dart';
 import 'package:sistema_dental/features/client/data/patient_repository.dart';
 
-final clientAppointmentsProvider = FutureProvider<List<Appointment>>((
+final clientAppointmentsProvider = StreamProvider<List<Appointment>>((
   ref,
-) async {
+) async* {
   final selectedPatient = ref.watch(selectedPatientProvider);
-  if (selectedPatient == null) return [];
+  if (selectedPatient == null) {
+    yield [];
+    return;
+  }
 
   final repo = ref.watch(appointmentRepositoryProvider);
-  return repo.getAppointmentsForPatient(selectedPatient.id);
+  yield* repo.watchAppointmentsForPatient(selectedPatient.id);
 });
 
 final clinicQueueProvider = StreamProvider<List<Appointment>>((ref) async* {
@@ -26,9 +29,15 @@ final clinicQueueProvider = StreamProvider<List<Appointment>>((ref) async* {
       .from('clinic_memberships')
       .select('clinic_id')
       .eq('user_id', user.id)
+      .inFilter('role_in_clinic', ['owner', 'dentist', 'secretary'])
       .eq('is_active', true)
       .limit(1)
-      .single();
+      .maybeSingle();
+
+  if (membership == null) {
+    yield [];
+    return;
+  }
 
   final clinicId = membership['clinic_id'] as String;
 
@@ -47,13 +56,13 @@ class AppointmentRepository {
 
   AppointmentRepository(this._supabase);
 
-  /// Obtiene las citas de un paciente específico (para el panel de Cliente)
   Future<List<Appointment>> getAppointmentsForPatient(String patientId) async {
     try {
       final response = await _supabase
           .from('appointments')
           .select('''
             *,
+            patient:patients(first_name, last_name, profile_id),
             doctor:doctors(user:profiles(name)),
             service:services(service_name, duration_mins)
           ''')
@@ -67,6 +76,17 @@ class AppointmentRepository {
     }
   }
 
+  Stream<List<Appointment>> watchAppointmentsForPatient(String patientId) async* {
+    final changes = _supabase
+        .from('appointments')
+        .stream(primaryKey: ['id'])
+        .eq('patient_id', patientId);
+
+    await for (final _ in changes) {
+      yield await getAppointmentsForPatient(patientId);
+    }
+  }
+
   /// Obtiene la fila de espera de hoy para una clínica en tiempo real (Stream) (Para el panel de Dentista)
   Future<List<Appointment>> getTodayQueueForClinic(
     String clinicId, {
@@ -77,13 +97,12 @@ class AppointmentRepository {
         .from('appointments')
         .select('''
           *,
-          patient:patients(first_name, last_name),
+          patient:patients(first_name, last_name, profile_id),
           doctor:doctors(user:profiles(name)),
           service:services(service_name, duration_mins)
         ''')
         .eq('clinic_id', clinicId)
         .gte('date_time', range.startUtc.toIso8601String())
-        .lt('date_time', range.endUtc.toIso8601String())
         .inFilter('status', ['upcoming', 'in_lobby', 'in_treatment'])
         .order('date_time', ascending: true);
 

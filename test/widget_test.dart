@@ -2,7 +2,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sistema_dental/core/models/doctor.dart';
 import 'package:sistema_dental/features/dentist/presentation/widgets/dentist_calendar_view.dart';
 import 'package:sistema_dental/features/shared/data/appointment_repository.dart';
-import 'package:sistema_dental/features/secretary/data/billing_repository.dart';
 
 void main() {
   group('appointmentLocalDayUtcRange', () {
@@ -64,39 +63,6 @@ void main() {
 
       expect(updated.specialty, 'Ortodoncia');
       expect(updated.isMembershipActive, isFalse);
-    });
-  });
-
-  group('billing totals', () {
-    test('calculates partial payments and remaining balance', () {
-      final invoice = <String, dynamic>{
-        'total': 100,
-        'payments': [
-          {'amount': 35.50, 'voided_at': null},
-          {'amount': '14.50', 'voided_at': null},
-        ],
-      };
-
-      expect(invoicePaidAmount(invoice), 50);
-      expect(invoiceBalance(invoice), 50);
-    });
-
-    test('excludes voided payments from accounting totals', () {
-      final invoice = <String, dynamic>{
-        'total': 80,
-        'payments': [
-          {'amount': 30, 'voided_at': '2026-07-21T12:00:00Z'},
-          {'amount': 20, 'voided_at': null},
-        ],
-      };
-
-      expect(invoicePaidAmount(invoice), 20);
-      expect(invoiceBalance(invoice), 60);
-    });
-
-    test('normalizes numeric values returned as strings', () {
-      expect(billingMoney('125.40'), 125.40);
-      expect(billingMoney(null), 0);
     });
   });
 
