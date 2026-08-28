@@ -204,9 +204,12 @@ class ClinicalRepository {
     try {
       final response = await _client
           .from('patients')
-          .select('id, first_name, last_name, date_of_birth')
+          .select('''
+            id, first_name, last_name, relationship, date_of_birth, profile_id,
+            profiles:profiles(name, email)
+          ''')
           .eq('clinic_id', clinicId)
-          .order('last_name');
+          .order('first_name');
 
       return List<Map<String, dynamic>>.from(response);
     } catch (e) {
